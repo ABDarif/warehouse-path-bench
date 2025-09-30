@@ -1,9 +1,13 @@
 
+<<<<<<< HEAD
 # Warehouse Path Benchmark — Starter Kit (SimPy + Python)
 
 This is a minimal, **team-friendly** scaffold for comparing shortest-path and TSP sequencing
 algorithms for warehouse order picking. It is designed to run **entirely in Google Colab**
 or locally and to be easy to split across **4 teammates**.
+=======
+# Warehouse Path Benchmark (SimPy + Python)
+>>>>>>> 09fc1e88cd8fbcfa8e717e118d7ebe9b1474bb02
 
 ## Layout
 ```
@@ -25,4 +29,8 @@ python -m pip install -r requirements.txt
 python -m exp.run_matrix --algos HeldKarp,NN2opt,GA --K 5 --map-types narrow --seeds 3 --out results/raw
 python -m exp.eval --raw results/raw --out results/summary/summary.csv
 python -m viz.plots --summary results/summary/summary.csv --outdir figs
+<<<<<<< HEAD
 ```
+=======
+```
+>>>>>>> 09fc1e88cd8fbcfa8e717e118d7ebe9b1474bb02
