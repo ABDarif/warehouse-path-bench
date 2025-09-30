@@ -1,0 +1,1033 @@
+import numpy as np
+import random
+import time
+import matplotlib.pyplot as plt
+
+# --- 1. Problem Definition and Utility Functions ---
+
+class RoutingProblem:
+    """Handles the node generation, distance matrix, and cost calculation."""
+    def __init__(self, num_nodes, seed=42):
+        self.num_nodes = num_nodes
+        self.rng = random.Random(seed)
+        np.random.seed(seed)
+        self.coords = np.random.rand(num_nodes, 2) * 100
+        self.distance_matrix = self._calculate_distance_matrix()
+        # Ensure the Depot (index 0) has specific coordinates for visual consistency
+        self.coords[0] = [50, 50]
+
+    def _calculate_distance_matrix(self):
+        """Calculates Euclidean distance between all nodes."""
+        dist_matrix = np.zeros((self.num_nodes, self.num_nodes))
+        for i in range(self.num_nodes):
+            for j in range(self.num_nodes):
+                if i != j:
+                    dist = np.linalg.norm(self.coords[i] - self.coords[j])
+                    dist_matrix[i, j] = dist
+        return dist_matrix
+
+    def calculate_cost(self, permutation):
+        """
+        Calculates the total tour length for a given permutation.
+        Assumes the tour returns to the depot (index 0).
+        Permutation MUST start with 0.
+        """
+        cost = 0.0
+        # Cost from Depot (0) to first stop
+        cost += self.distance_matrix[permutation[0], permutation[1]]
+
+        # Cost between subsequent stops
+        for i in range(1, len(permutation) - 1):
+            cost += self.distance_matrix[permutation[i], permutation[i+1]]
+
+        # Cost from last stop back to Depot (0)
+            cost += self.distance_matrix[permutation[-1], permutation[0]]
+        return cost
+
+    def get_nodes(self):
+        """Returns node indices excluding the fixed depot."""
+        return list(range(1, self.num_nodes))
+
+# --- 2. Local Search (2-opt) ---
+
+def two_opt_swap(route, i, j):
+    """Performs a 2-opt swap: reverses the segment between i and j."""
+    # Note: Only swap indices > 0 to preserve the fixed depot at index 0
+    new_route = route[:i] + route[j:i-1:-1] + route[j+1:]
+    return new_route
+
+def local_search_2opt(problem, initial_route, time_budget_ms=None):
+    """
+    Applies the 2-opt heuristic to polish a route.
+    Stops if time budget is exceeded.
+    """
+    start_time = time.time()
+    current_route = list(initial_route)
+    current_cost = problem.calculate_cost(current_route)
+    improved = True
+
+    # We only operate on the sub-route starting from index 1 (excluding depot)
+    N = len(current_route)
+
+    while improved:
+        improved = False
+        best_cost = current_cost
+
+        # We start i from 1 to avoid swapping the fixed depot (index 0)
+        for i in range(1, N - 1):
+            for j in range(i + 1, N):
+
+                # Check time budget
+                if time_budget_ms and (time.time() - start_time) * 1000 > time_budget_ms:
+                    return current_route, current_cost
+
+                new_route = two_opt_swap(current_route, i, j)
+                new_cost = problem.calculate_cost(new_route)
+
+                if new_cost < best_cost:
+                    best_cost = new_cost
+                    current_route = new_route
+                    improved = True
+
+        current_cost = best_cost
+
+    return current_route, current_cost
+
+# --- 3. Genetic Algorithm (GA) ---
+
+class GeneticAlgorithm:
+    """Implements GA with permutation representation and required operators."""
+
+    def __init__(self, problem, params):
+        self.problem = problem
+        self.params = {
+            'pop_size': params.get('pop', 100),
+            'generations': params.get('gens', 500), # Stores the value from 'gens'
+            'pc': params.get('pc', 0.8), # Crossover probability
+            'pm': params.get('pm', 0.05), # Mutation probability
+            'tournament_k': params.get('tournament_k', 5),
+            'elite_count': params.get('elite', 2),
+            'early_stop_g': params.get('early_stop_g', 50) # g generations
+        }
+        self.nodes_to_sequence = problem.get_nodes() # Nodes 1 to K-1
+        self.rng = random.Random(42) # Consistent RNG for GA
+
+    def _initialize_population(self):
+        """Creates a population of random permutations, fixed start at 0."""
+        pop = []
+        for _ in range(self.params['pop_size']):
+            route = [0] + self.rng.sample(self.nodes_to_sequence, len(self.nodes_to_sequence))
+            pop.append(route)
+        return pop
+
+    def _evaluate_population(self, population):
+        """Evaluates fitness (inverse of cost) for all routes."""
+        fitness = [self.problem.calculate_cost(route) for route in population]
+        return fitness # Since we minimize cost, we return cost directly
+
+    def _tournament_selection(self, population, fitness):
+        """Selects a parent using k-tournament selection (minimizing cost)."""
+        k = self.params['tournament_k']
+        # Select k random indices
+        candidates_indices = self.rng.sample(range(len(population)), k)
+
+        best_index = candidates_indices[0]
+        best_fitness = fitness[best_index]
+
+        for index in candidates_indices[1:]:
+            if fitness[index] < best_fitness: # Minimization
+                best_fitness = fitness[index]
+                best_index = index
+
+        return population[best_index]
+
+    def _ox_crossover(self, parent1, parent2):
+        """
+        Order Crossover (OX) for permutations, respecting fixed depot (index 0).
+        Crossover only happens on indices 1 to N-1.
+        """
+        N = len(parent1)
+        sub_p2 = parent2[1:]
+        sub_N = N - 1
+
+        # Select two random cut points on the sub-route (indices 0 to sub_N-1)
+        if sub_N < 2: return parent1
+
+        start_sub, end_sub = sorted(self.rng.sample(range(sub_N), 2))
+
+        # Convert sub-route indices (0-based) to full route indices (1-based)
+        start_full = start_sub + 1
+        end_full = end_sub + 1
+
+        # Offspring 1 construction
+        child1 = [0] * N
+
+        # 1. Copy the central segment from P1
+        fixed_segment = parent1[start_full : end_full + 1]
+        child1[start_full : end_full + 1] = fixed_segment
+
+        # 2. Get the remaining nodes from P2 in their original order
+        remaining_nodes = []
+        for node in sub_p2:
+            if node not in fixed_segment:
+                remaining_nodes.append(node)
+
+        # 3. Fill the empty slots using the ordered remaining nodes
+        current_node_index = 0
+        for i in range(1, N): # Iterate through the fillable indices (1 to N-1)
+            # If the current index 'i' is OUTSIDE the fixed segment [start_full, end_full]
+            if not (start_full <= i <= end_full):
+                child1[i] = remaining_nodes[current_node_index]
+                current_node_index += 1
+
+        return child1
+
+    def _swap_mutation(self, route):
+        """Performs a simple swap mutation on two non-depot nodes."""
+        if self.rng.random() < self.params['pm']:
+            N = len(route)
+            # Select two random indices > 0
+            idx1, idx2 = self.rng.sample(range(1, N), 2)
+
+            mutated_route = list(route)
+            mutated_route[idx1], mutated_route[idx2] = mutated_route[idx2], mutated_route[idx1]
+            return mutated_route
+        return route
+
+    def solve(self, time_budget_ms=None):
+        """Runs the GA search process."""
+        start_time = time.time()
+
+        population = self._initialize_population()
+        fitness_history = []
+        best_cost_overall = float('inf')
+        best_route_overall = None
+
+        no_improvement_count = 0
+
+        for generation in range(self.params['generations']):
+            # 1. Check time budget
+            if time_budget_ms and (time.time() - start_time) * 1000 > time_budget_ms:
+                break
+
+            costs = self._evaluate_population(population)
+
+            # Record best cost for plotting
+            current_best_cost = min(costs)
+
+            if current_best_cost < best_cost_overall:
+                best_cost_overall = current_best_cost
+                best_route_overall = population[costs.index(best_cost_overall)]
+                no_improvement_count = 0
+            else:
+                no_improvement_count += 1
+
+            fitness_history.append(current_best_cost)
+
+            # Early Stopping
+            if no_improvement_count >= self.params['early_stop_g']:
+                print(f"GA stopped early at generation {generation} due to no improvement for {self.params['early_stop_g']} generations.")
+                break
+
+            new_population = []
+
+            # Elitism: Keep the best few
+            elite_indices = np.argsort(costs)[:self.params['elite_count']]
+            for i in elite_indices:
+                new_population.append(population[i])
+
+            # Build the rest of the new population
+            while len(new_population) < self.params['pop_size']:
+                # Selection
+                parent1 = self._tournament_selection(population, costs)
+                parent2 = self._tournament_selection(population, costs)
+
+                child = parent1 # Default to parent if no crossover happens
+
+                # Crossover
+                if self.rng.random() < self.params['pc']:
+                    child = self._ox_crossover(parent1, parent2)
+
+                # Mutation
+                child = self._swap_mutation(child)
+
+                new_population.append(child)
+
+            population = new_population
+
+        return best_route_overall, best_cost_overall, fitness_history
+
+# --- 4. Simulated Annealing (SA) ---
+
+class SimulatedAnnealing:
+    """Implements SA with edge-swap neighborhood."""
+
+    def __init__(self, problem, initial_temp=1000.0, cooling_rate=0.99, min_temp=1.0):
+        self.problem = problem
+        self.T = initial_temp
+        self.cooling_rate = cooling_rate
+        self.min_temp = min_temp
+        self.rng = random.Random(42)
+
+    def _generate_initial_route(self):
+        """Uses a random initial route, fixed start at 0."""
+        nodes = self.problem.get_nodes()
+        route = [0] + self.rng.sample(nodes, len(nodes))
+        return route
+
+    def _get_neighbor(self, route):
+        """Generates a neighbor using a 2-swap (edge-swap) move."""
+        N = len(route)
+        if N <= 2: return route
+
+        # Select two random indices > 0
+        idx1, idx2 = self.rng.sample(range(1, N), 2)
+        i, j = min(idx1, idx2), max(idx1, idx2)
+
+        # 2-opt swap is used as the neighborhood move
+        return two_opt_swap(route, i, j)
+
+    def solve(self, time_budget_ms=None):
+        """Runs the SA search process."""
+        start_time = time.time()
+
+        current_route = self._generate_initial_route()
+        current_cost = self.problem.calculate_cost(current_route)
+
+        best_route = list(current_route)
+        best_cost = current_cost
+
+        T = self.T
+        cost_history = [current_cost]
+
+        while T > self.min_temp:
+            # Check time budget
+            if time_budget_ms and (time.time() - start_time) * 1000 > time_budget_ms:
+                break
+
+            neighbor_route = self._get_neighbor(current_route)
+            neighbor_cost = self.problem.calculate_cost(neighbor_route)
+
+            delta_cost = neighbor_cost - current_cost
+
+            if delta_cost < 0:
+                # Accept better solution
+                current_route = neighbor_route
+                current_cost = neighbor_cost
+                if current_cost < best_cost:
+                    best_cost = current_cost
+                    best_route = list(current_route)
+            else:
+                # Accept worse solution with probability P = exp(-delta_cost / T)
+                acceptance_prob = np.exp(-delta_cost / T)
+                if self.rng.random() < acceptance_prob:
+                    current_route = neighbor_route
+                    current_cost = neighbor_cost
+
+            T *= self.cooling_rate
+            cost_history.append(current_cost)
+
+        return best_route, best_cost, cost_history
+
+
+# --- 5. Heuristics (NN for Hybrid-A Baseline) ---
+
+def nearest_neighbor_sequence(problem):
+    """Generates a route using the Nearest Neighbor heuristic, fixed start at 0."""
+    num_nodes = problem.num_nodes
+    unvisited = set(range(1, num_nodes))
+    route = [0]
+    current_node = 0
+
+    while unvisited:
+        min_dist = float('inf')
+        next_node = -1
+
+        for neighbor in unvisited:
+            dist = problem.distance_matrix[current_node, neighbor]
+            if dist < min_dist:
+                min_dist = dist
+                next_node = neighbor
+
+        route.append(next_node)
+        unvisited.remove(next_node)
+        current_node = next_node
+
+    return route, problem.calculate_cost(route)
+
+
+# --- 6. Hybrid Solvers (A* Legs is simulated via direct distance lookup) ---
+
+def a_star_shortest_path(problem, node_a, node_b):
+    """
+    Simulates finding the shortest path (A* leg) between two sequenced nodes.
+    For this simplified TSP context, we assume the pre-calculated distance
+    matrix already holds the shortest path cost.
+    """
+    return problem.distance_matrix[node_a, node_b]
+
+def hybrid_solver_a_nn_2opt(problem, time_budget_ms):
+    """Hybrid-A: NN -> 2-opt (Baseline Hybrid)."""
+    # 1. Sequence the nodes using NN
+    nn_route, _ = nearest_neighbor_sequence(problem)
+    # 2. Polish with 2-opt
+    final_route, final_cost = local_search_2opt(problem, nn_route, time_budget_ms=time_budget_ms)
+    return final_route, final_cost
+
+def hybrid_solver_b_ga_2opt(problem, ga_params, time_budget_ms):
+    """Hybrid-B: GA -> (optional 2-opt polish on final result)."""
+
+    # Check if time budget is active. Allocate a portion for GA.
+    # ACTION: Changed budget split from 90/10 to 80/20 to give 2-opt more time for polishing
+    ga_budget_ms = time_budget_ms * 0.8 if time_budget_ms else None
+    polish_budget_ms = time_budget_ms * 0.2 if time_budget_ms else None
+
+    # 1. Sequence the nodes using GA
+    ga = GeneticAlgorithm(problem, ga_params)
+    ga_route, ga_cost, _ = ga.solve(time_budget_ms=ga_budget_ms)
+
+    # 2. Optional 2-opt polish on the best result found by GA
+    final_route, final_cost = local_search_2opt(problem, ga_route, time_budget_ms=polish_budget_ms)
+
+    return final_route, final_cost
+
+def hybrid_solver_c_sa(problem, time_budget_ms, sa_params=None):
+    """Hybrid-C: SA sequence search."""
+    sa_params = sa_params or {}
+    sa = SimulatedAnnealing(problem, **sa_params)
+    final_route, final_cost, cost_history = sa.solve(time_budget_ms=time_budget_ms)
+    # The function now correctly returns 3 values.
+    return final_route, final_cost, cost_history
+
+# --- 7. Experiments and Acceptance Tests ---
+
+def run_experiment_and_plot_convergence(problem_size=12, ga_params=None):
+    """Runs GA and plots the median fitness vs generation."""
+    print(f"\n--- Running Convergence Plot Test (K={problem_size}) ---")
+    problem = RoutingProblem(num_nodes=problem_size, seed=1)
+
+    # Use 'gens' as the key to match the parameter dictionary structure
+    default_ga_params = {'pop': 100, 'gens': 500, 'pc': 0.8, 'pm': 0.05, 'tournament_k': 5, 'elite': 2, 'early_stop_g': 50}
+    if ga_params:
+        default_ga_params.update(ga_params)
+
+    ga = GeneticAlgorithm(problem, default_ga_params)
+
+    # Run the GA solver
+    start_time = time.time()
+    _, best_cost, cost_history = ga.solve()
+    end_time = time.time()
+
+    print(f"GA Run Time: {end_time - start_time:.2f} seconds")
+    print(f"GA Final Best Cost: {best_cost:.2f}")
+
+    # Plotting
+    plt.figure(figsize=(10, 6))
+    plt.plot(cost_history, label='Best Cost per Generation', color='teal')
+    plt.title(f'GA Convergence (K={problem_size} TSP-like Problem)')
+    plt.xlabel(f'Generation (Stopped Early at: {len(cost_history)} / {default_ga_params["gens"]})')
+    plt.ylabel('Tour Length (Fitness)')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+    plt.show()
+
+def run_acceptance_tests(K_values=[10, 12, 15], num_seeds=20, time_budget_ms=200):
+    """
+    Compares GA-2opt vs NN-2opt on mean length across multiple seeds,
+    respecting a plan time budget.
+    """
+    print(f"\n--- Running Acceptance Tests (N={num_seeds} Seeds, Budget={time_budget_ms}ms) ---")
+
+    # ACTION: Increased population size from 50 to 75 for better diversity and search power
+    # to handle larger K values within the tight time budget.
+    ga_params = {'pop': 75, 'gens': 200, 'pc': 0.8, 'pm': 0.08, 'tournament_k': 5, 'elite': 1, 'early_stop_g': 30}
+
+    results = {}
+
+    for K in K_values:
+        print(f"\nTesting K={K} (Nodes 0 to {K-1})...")
+        ga_costs = []
+        nn_costs = []
+
+        for seed in range(num_seeds):
+            # Problem instance changes per seed
+            problem = RoutingProblem(num_nodes=K, seed=seed)
+
+            # Hybrid-A: NN -> 2-opt (Baseline)
+            _, cost_nn = hybrid_solver_a_nn_2opt(problem, time_budget_ms)
+            nn_costs.append(cost_nn)
+
+            # Hybrid-B: GA -> 2-opt (Competitive)
+            _, cost_ga = hybrid_solver_b_ga_2opt(problem, ga_params, time_budget_ms)
+            ga_costs.append(cost_ga)
+
+            print(f"  Seed {seed:02d}: NN-2opt={cost_nn:.2f} | GA-2opt={cost_ga:.2f}")
+
+        # Calculate means
+        mean_nn = np.mean(nn_costs)
+        mean_ga = np.mean(ga_costs)
+
+        results[K] = {
+            'mean_nn2opt': mean_nn,
+            'mean_ga2opt': mean_ga
+        }
+
+        # Determine if GA beats NN2opt
+        ga_beats_nn = "YES" if mean_ga < mean_nn else "NO"
+
+        print(f"\n--- Results K={K} (Mean over {num_seeds} runs) ---")
+        print(f"  NN->2opt Mean Cost: {mean_nn:.4f}")
+        print(f"  GA->2opt Mean Cost: {mean_ga:.4f}")
+        print(f"  GA beats NN2opt on mean length: {ga_beats_nn}")
+
+# --- Main Execution Block ---
+
+if __name__ == '__main__':
+
+    # Ensure the __time_budget_ms is defined for safety, though it is usually provided
+    TIME_BUDGET = 200 # Default to 200ms per call if not dynamically set
+    print(f"Defaulting to TIME_BUDGET_MS = {TIME_BUDGET} for each metaheuristic call.")
+
+    # 1. Convergence Plot Experiment (K=12, GA)
+    run_experiment_and_plot_convergence(
+        problem_size=12,
+        ga_params={'pop': 100, 'gens': 500, 'early_stop_g': 50}
+    )
+
+    # 2. Comparative Acceptance Tests
+    run_acceptance_tests(
+        K_values=[10, 12, 15],
+        num_seeds=20,
+        time_budget_ms=TIME_BUDGET
+    )
+
+    # 3. Quick Demo of Hybrid-C (SA)
+    print("\n--- Quick Demo of Hybrid-C (SA) ---")
+    problem_sa = RoutingProblem(num_nodes=10, seed=100)
+
+    # SA params: cooling_rate selected for a reasonable run length
+    sa_params = {'initial_temp': 1000.0, 'cooling_rate': 0.9995, 'min_temp': 0.1}
+
+    start_time = time.time()
+    # Updated to receive all 3 expected values: route, cost, history
+    _, cost_sa, _ = hybrid_solver_c_sa(problem_sa, TIME_BUDGET, sa_params)
+    end_time = time.time()
+
+    print(f"SA Run Time: {end_time - start_time:.2f} seconds (Budget: {TIME_BUDGET/1000}s)")
+    print(f"SA Final Best Cost (K=10): {cost_sa:.2f}")import numpy as np
+import random
+import time
+import matplotlib.pyplot as plt
+
+# --- 1. Problem Definition and Utility Functions ---
+
+class RoutingProblem:
+    """Handles the node generation, distance matrix, and cost calculation."""
+    def __init__(self, num_nodes, seed=42):
+        self.num_nodes = num_nodes
+        self.rng = random.Random(seed)
+        np.random.seed(seed)
+        self.coords = np.random.rand(num_nodes, 2) * 100
+        self.distance_matrix = self._calculate_distance_matrix()
+        # Ensure the Depot (index 0) has specific coordinates for visual consistency
+        self.coords[0] = [50, 50]
+
+    def _calculate_distance_matrix(self):
+        """Calculates Euclidean distance between all nodes."""
+        dist_matrix = np.zeros((self.num_nodes, self.num_nodes))
+        for i in range(self.num_nodes):
+            for j in range(self.num_nodes):
+                if i != j:
+                    dist = np.linalg.norm(self.coords[i] - self.coords[j])
+                    dist_matrix[i, j] = dist
+        return dist_matrix
+
+    def calculate_cost(self, permutation):
+        """
+        Calculates the total tour length for a given permutation.
+        Assumes the tour returns to the depot (index 0).
+        Permutation MUST start with 0.
+        """
+        cost = 0.0
+        # Cost from Depot (0) to first stop
+        cost += self.distance_matrix[permutation[0], permutation[1]]
+
+        # Cost between subsequent stops
+        for i in range(1, len(permutation) - 1):
+            cost += self.distance_matrix[permutation[i], permutation[i+1]]
+
+        # Cost from last stop back to Depot (0)
+            cost += self.distance_matrix[permutation[-1], permutation[0]]
+        return cost
+
+    def get_nodes(self):
+        """Returns node indices excluding the fixed depot."""
+        return list(range(1, self.num_nodes))
+
+# --- 2. Local Search (2-opt) ---
+
+def two_opt_swap(route, i, j):
+    """Performs a 2-opt swap: reverses the segment between i and j."""
+    # Note: Only swap indices > 0 to preserve the fixed depot at index 0
+    new_route = route[:i] + route[j:i-1:-1] + route[j+1:]
+    return new_route
+
+def local_search_2opt(problem, initial_route, time_budget_ms=None):
+    """
+    Applies the 2-opt heuristic to polish a route.
+    Stops if time budget is exceeded.
+    """
+    start_time = time.time()
+    current_route = list(initial_route)
+    current_cost = problem.calculate_cost(current_route)
+    improved = True
+
+    # We only operate on the sub-route starting from index 1 (excluding depot)
+    N = len(current_route)
+
+    while improved:
+        improved = False
+        best_cost = current_cost
+
+        # We start i from 1 to avoid swapping the fixed depot (index 0)
+        for i in range(1, N - 1):
+            for j in range(i + 1, N):
+
+                # Check time budget
+                if time_budget_ms and (time.time() - start_time) * 1000 > time_budget_ms:
+                    return current_route, current_cost
+
+                new_route = two_opt_swap(current_route, i, j)
+                new_cost = problem.calculate_cost(new_route)
+
+                if new_cost < best_cost:
+                    best_cost = new_cost
+                    current_route = new_route
+                    improved = True
+
+        current_cost = best_cost
+
+    return current_route, current_cost
+
+# --- 3. Genetic Algorithm (GA) ---
+
+class GeneticAlgorithm:
+    """Implements GA with permutation representation and required operators."""
+
+    def __init__(self, problem, params):
+        self.problem = problem
+        self.params = {
+            'pop_size': params.get('pop', 100),
+            'generations': params.get('gens', 500), # Stores the value from 'gens'
+            'pc': params.get('pc', 0.8), # Crossover probability
+            'pm': params.get('pm', 0.05), # Mutation probability
+            'tournament_k': params.get('tournament_k', 5),
+            'elite_count': params.get('elite', 2),
+            'early_stop_g': params.get('early_stop_g', 50) # g generations
+        }
+        self.nodes_to_sequence = problem.get_nodes() # Nodes 1 to K-1
+        self.rng = random.Random(42) # Consistent RNG for GA
+
+    def _initialize_population(self):
+        """Creates a population of random permutations, fixed start at 0."""
+        pop = []
+        for _ in range(self.params['pop_size']):
+            route = [0] + self.rng.sample(self.nodes_to_sequence, len(self.nodes_to_sequence))
+            pop.append(route)
+        return pop
+
+    def _evaluate_population(self, population):
+        """Evaluates fitness (inverse of cost) for all routes."""
+        fitness = [self.problem.calculate_cost(route) for route in population]
+        return fitness # Since we minimize cost, we return cost directly
+
+    def _tournament_selection(self, population, fitness):
+        """Selects a parent using k-tournament selection (minimizing cost)."""
+        k = self.params['tournament_k']
+        # Select k random indices
+        candidates_indices = self.rng.sample(range(len(population)), k)
+
+        best_index = candidates_indices[0]
+        best_fitness = fitness[best_index]
+
+        for index in candidates_indices[1:]:
+            if fitness[index] < best_fitness: # Minimization
+                best_fitness = fitness[index]
+                best_index = index
+
+        return population[best_index]
+
+    def _ox_crossover(self, parent1, parent2):
+        """
+        Order Crossover (OX) for permutations, respecting fixed depot (index 0).
+        Crossover only happens on indices 1 to N-1.
+        """
+        N = len(parent1)
+        sub_p2 = parent2[1:]
+        sub_N = N - 1
+
+        # Select two random cut points on the sub-route (indices 0 to sub_N-1)
+        if sub_N < 2: return parent1
+
+        start_sub, end_sub = sorted(self.rng.sample(range(sub_N), 2))
+
+        # Convert sub-route indices (0-based) to full route indices (1-based)
+        start_full = start_sub + 1
+        end_full = end_sub + 1
+
+        # Offspring 1 construction
+        child1 = [0] * N
+
+        # 1. Copy the central segment from P1
+        fixed_segment = parent1[start_full : end_full + 1]
+        child1[start_full : end_full + 1] = fixed_segment
+
+        # 2. Get the remaining nodes from P2 in their original order
+        remaining_nodes = []
+        for node in sub_p2:
+            if node not in fixed_segment:
+                remaining_nodes.append(node)
+
+        # 3. Fill the empty slots using the ordered remaining nodes
+        current_node_index = 0
+        for i in range(1, N): # Iterate through the fillable indices (1 to N-1)
+            # If the current index 'i' is OUTSIDE the fixed segment [start_full, end_full]
+            if not (start_full <= i <= end_full):
+                child1[i] = remaining_nodes[current_node_index]
+                current_node_index += 1
+
+        return child1
+
+    def _swap_mutation(self, route):
+        """Performs a simple swap mutation on two non-depot nodes."""
+        if self.rng.random() < self.params['pm']:
+            N = len(route)
+            # Select two random indices > 0
+            idx1, idx2 = self.rng.sample(range(1, N), 2)
+
+            mutated_route = list(route)
+            mutated_route[idx1], mutated_route[idx2] = mutated_route[idx2], mutated_route[idx1]
+            return mutated_route
+        return route
+
+    def solve(self, time_budget_ms=None):
+        """Runs the GA search process."""
+        start_time = time.time()
+
+        population = self._initialize_population()
+        fitness_history = []
+        best_cost_overall = float('inf')
+        best_route_overall = None
+
+        no_improvement_count = 0
+
+        for generation in range(self.params['generations']):
+            # 1. Check time budget
+            if time_budget_ms and (time.time() - start_time) * 1000 > time_budget_ms:
+                break
+
+            costs = self._evaluate_population(population)
+
+            # Record best cost for plotting
+            current_best_cost = min(costs)
+
+            if current_best_cost < best_cost_overall:
+                best_cost_overall = current_best_cost
+                best_route_overall = population[costs.index(best_cost_overall)]
+                no_improvement_count = 0
+            else:
+                no_improvement_count += 1
+
+            fitness_history.append(current_best_cost)
+
+            # Early Stopping
+            if no_improvement_count >= self.params['early_stop_g']:
+                print(f"GA stopped early at generation {generation} due to no improvement for {self.params['early_stop_g']} generations.")
+                break
+
+            new_population = []
+
+            # Elitism: Keep the best few
+            elite_indices = np.argsort(costs)[:self.params['elite_count']]
+            for i in elite_indices:
+                new_population.append(population[i])
+
+            # Build the rest of the new population
+            while len(new_population) < self.params['pop_size']:
+                # Selection
+                parent1 = self._tournament_selection(population, costs)
+                parent2 = self._tournament_selection(population, costs)
+
+                child = parent1 # Default to parent if no crossover happens
+
+                # Crossover
+                if self.rng.random() < self.params['pc']:
+                    child = self._ox_crossover(parent1, parent2)
+
+                # Mutation
+                child = self._swap_mutation(child)
+
+                new_population.append(child)
+
+            population = new_population
+
+        return best_route_overall, best_cost_overall, fitness_history
+
+# --- 4. Simulated Annealing (SA) ---
+
+class SimulatedAnnealing:
+    """Implements SA with edge-swap neighborhood."""
+
+    def __init__(self, problem, initial_temp=1000.0, cooling_rate=0.99, min_temp=1.0):
+        self.problem = problem
+        self.T = initial_temp
+        self.cooling_rate = cooling_rate
+        self.min_temp = min_temp
+        self.rng = random.Random(42)
+
+    def _generate_initial_route(self):
+        """Uses a random initial route, fixed start at 0."""
+        nodes = self.problem.get_nodes()
+        route = [0] + self.rng.sample(nodes, len(nodes))
+        return route
+
+    def _get_neighbor(self, route):
+        """Generates a neighbor using a 2-swap (edge-swap) move."""
+        N = len(route)
+        if N <= 2: return route
+
+        # Select two random indices > 0
+        idx1, idx2 = self.rng.sample(range(1, N), 2)
+        i, j = min(idx1, idx2), max(idx1, idx2)
+
+        # 2-opt swap is used as the neighborhood move
+        return two_opt_swap(route, i, j)
+
+    def solve(self, time_budget_ms=None):
+        """Runs the SA search process."""
+        start_time = time.time()
+
+        current_route = self._generate_initial_route()
+        current_cost = self.problem.calculate_cost(current_route)
+
+        best_route = list(current_route)
+        best_cost = current_cost
+
+        T = self.T
+        cost_history = [current_cost]
+
+        while T > self.min_temp:
+            # Check time budget
+            if time_budget_ms and (time.time() - start_time) * 1000 > time_budget_ms:
+                break
+
+            neighbor_route = self._get_neighbor(current_route)
+            neighbor_cost = self.problem.calculate_cost(neighbor_route)
+
+            delta_cost = neighbor_cost - current_cost
+
+            if delta_cost < 0:
+                # Accept better solution
+                current_route = neighbor_route
+                current_cost = neighbor_cost
+                if current_cost < best_cost:
+                    best_cost = current_cost
+                    best_route = list(current_route)
+            else:
+                # Accept worse solution with probability P = exp(-delta_cost / T)
+                acceptance_prob = np.exp(-delta_cost / T)
+                if self.rng.random() < acceptance_prob:
+                    current_route = neighbor_route
+                    current_cost = neighbor_cost
+
+            T *= self.cooling_rate
+            cost_history.append(current_cost)
+
+        return best_route, best_cost, cost_history
+
+
+# --- 5. Heuristics (NN for Hybrid-A Baseline) ---
+
+def nearest_neighbor_sequence(problem):
+    """Generates a route using the Nearest Neighbor heuristic, fixed start at 0."""
+    num_nodes = problem.num_nodes
+    unvisited = set(range(1, num_nodes))
+    route = [0]
+    current_node = 0
+
+    while unvisited:
+        min_dist = float('inf')
+        next_node = -1
+
+        for neighbor in unvisited:
+            dist = problem.distance_matrix[current_node, neighbor]
+            if dist < min_dist:
+                min_dist = dist
+                next_node = neighbor
+
+        route.append(next_node)
+        unvisited.remove(next_node)
+        current_node = next_node
+
+    return route, problem.calculate_cost(route)
+
+
+# --- 6. Hybrid Solvers (A* Legs is simulated via direct distance lookup) ---
+
+def a_star_shortest_path(problem, node_a, node_b):
+    """
+    Simulates finding the shortest path (A* leg) between two sequenced nodes.
+    For this simplified TSP context, we assume the pre-calculated distance
+    matrix already holds the shortest path cost.
+    """
+    return problem.distance_matrix[node_a, node_b]
+
+def hybrid_solver_a_nn_2opt(problem, time_budget_ms):
+    """Hybrid-A: NN -> 2-opt (Baseline Hybrid)."""
+    # 1. Sequence the nodes using NN
+    nn_route, _ = nearest_neighbor_sequence(problem)
+    # 2. Polish with 2-opt
+    final_route, final_cost = local_search_2opt(problem, nn_route, time_budget_ms=time_budget_ms)
+    return final_route, final_cost
+
+def hybrid_solver_b_ga_2opt(problem, ga_params, time_budget_ms):
+    """Hybrid-B: GA -> (optional 2-opt polish on final result)."""
+
+    # Check if time budget is active. Allocate a portion for GA.
+    # ACTION: Changed budget split from 90/10 to 80/20 to give 2-opt more time for polishing
+    ga_budget_ms = time_budget_ms * 0.8 if time_budget_ms else None
+    polish_budget_ms = time_budget_ms * 0.2 if time_budget_ms else None
+
+    # 1. Sequence the nodes using GA
+    ga = GeneticAlgorithm(problem, ga_params)
+    ga_route, ga_cost, _ = ga.solve(time_budget_ms=ga_budget_ms)
+
+    # 2. Optional 2-opt polish on the best result found by GA
+    final_route, final_cost = local_search_2opt(problem, ga_route, time_budget_ms=polish_budget_ms)
+
+    return final_route, final_cost
+
+def hybrid_solver_c_sa(problem, time_budget_ms, sa_params=None):
+    """Hybrid-C: SA sequence search."""
+    sa_params = sa_params or {}
+    sa = SimulatedAnnealing(problem, **sa_params)
+    final_route, final_cost, cost_history = sa.solve(time_budget_ms=time_budget_ms)
+    # The function now correctly returns 3 values.
+    return final_route, final_cost, cost_history
+
+# --- 7. Experiments and Acceptance Tests ---
+
+def run_experiment_and_plot_convergence(problem_size=12, ga_params=None):
+    """Runs GA and plots the median fitness vs generation."""
+    print(f"\n--- Running Convergence Plot Test (K={problem_size}) ---")
+    problem = RoutingProblem(num_nodes=problem_size, seed=1)
+
+    # Use 'gens' as the key to match the parameter dictionary structure
+    default_ga_params = {'pop': 100, 'gens': 500, 'pc': 0.8, 'pm': 0.05, 'tournament_k': 5, 'elite': 2, 'early_stop_g': 50}
+    if ga_params:
+        default_ga_params.update(ga_params)
+
+    ga = GeneticAlgorithm(problem, default_ga_params)
+
+    # Run the GA solver
+    start_time = time.time()
+    _, best_cost, cost_history = ga.solve()
+    end_time = time.time()
+
+    print(f"GA Run Time: {end_time - start_time:.2f} seconds")
+    print(f"GA Final Best Cost: {best_cost:.2f}")
+
+    # Plotting
+    plt.figure(figsize=(10, 6))
+    plt.plot(cost_history, label='Best Cost per Generation', color='teal')
+    plt.title(f'GA Convergence (K={problem_size} TSP-like Problem)')
+    plt.xlabel(f'Generation (Stopped Early at: {len(cost_history)} / {default_ga_params["gens"]})')
+    plt.ylabel('Tour Length (Fitness)')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
+    plt.show()
+
+def run_acceptance_tests(K_values=[10, 12, 15], num_seeds=20, time_budget_ms=200):
+    """
+    Compares GA-2opt vs NN-2opt on mean length across multiple seeds,
+    respecting a plan time budget.
+    """
+    print(f"\n--- Running Acceptance Tests (N={num_seeds} Seeds, Budget={time_budget_ms}ms) ---")
+
+    # ACTION: Increased population size from 50 to 75 for better diversity and search power
+    # to handle larger K values within the tight time budget.
+    ga_params = {'pop': 75, 'gens': 200, 'pc': 0.8, 'pm': 0.08, 'tournament_k': 5, 'elite': 1, 'early_stop_g': 30}
+
+    results = {}
+
+    for K in K_values:
+        print(f"\nTesting K={K} (Nodes 0 to {K-1})...")
+        ga_costs = []
+        nn_costs = []
+
+        for seed in range(num_seeds):
+            # Problem instance changes per seed
+            problem = RoutingProblem(num_nodes=K, seed=seed)
+
+            # Hybrid-A: NN -> 2-opt (Baseline)
+            _, cost_nn = hybrid_solver_a_nn_2opt(problem, time_budget_ms)
+            nn_costs.append(cost_nn)
+
+            # Hybrid-B: GA -> 2-opt (Competitive)
+            _, cost_ga = hybrid_solver_b_ga_2opt(problem, ga_params, time_budget_ms)
+            ga_costs.append(cost_ga)
+
+            print(f"  Seed {seed:02d}: NN-2opt={cost_nn:.2f} | GA-2opt={cost_ga:.2f}")
+
+        # Calculate means
+        mean_nn = np.mean(nn_costs)
+        mean_ga = np.mean(ga_costs)
+
+        results[K] = {
+            'mean_nn2opt': mean_nn,
+            'mean_ga2opt': mean_ga
+        }
+
+        # Determine if GA beats NN2opt
+        ga_beats_nn = "YES" if mean_ga < mean_nn else "NO"
+
+        print(f"\n--- Results K={K} (Mean over {num_seeds} runs) ---")
+        print(f"  NN->2opt Mean Cost: {mean_nn:.4f}")
+        print(f"  GA->2opt Mean Cost: {mean_ga:.4f}")
+        print(f"  GA beats NN2opt on mean length: {ga_beats_nn}")
+
+# --- Main Execution Block ---
+
+if __name__ == '__main__':
+
+    # Ensure the __time_budget_ms is defined for safety, though it is usually provided
+    TIME_BUDGET = 200 # Default to 200ms per call if not dynamically set
+    print(f"Defaulting to TIME_BUDGET_MS = {TIME_BUDGET} for each metaheuristic call.")
+
+    # 1. Convergence Plot Experiment (K=12, GA)
+    run_experiment_and_plot_convergence(
+        problem_size=12,
+        ga_params={'pop': 100, 'gens': 500, 'early_stop_g': 50}
+    )
+
+    # 2. Comparative Acceptance Tests
+    run_acceptance_tests(
+        K_values=[10, 12, 15],
+        num_seeds=20,
+        time_budget_ms=TIME_BUDGET
+    )
+
+    # 3. Quick Demo of Hybrid-C (SA)
+    print("\n--- Quick Demo of Hybrid-C (SA) ---")
+    problem_sa = RoutingProblem(num_nodes=10, seed=100)
+
+    # SA params: cooling_rate selected for a reasonable run length
+    sa_params = {'initial_temp': 1000.0, 'cooling_rate': 0.9995, 'min_temp': 0.1}
+
+    start_time = time.time()
+    # Updated to receive all 3 expected values: route, cost, history
+    _, cost_sa, _ = hybrid_solver_c_sa(problem_sa, TIME_BUDGET, sa_params)
+    end_time = time.time()
+
+    print(f"SA Run Time: {end_time - start_time:.2f} seconds (Budget: {TIME_BUDGET/1000}s)")
+    print(f"SA Final Best Cost (K=10): {cost_sa:.2f}")
