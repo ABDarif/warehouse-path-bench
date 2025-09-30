@@ -1,0 +1,7 @@
+map_type,K,seed,algo,is_hybrid,tour_len,plan_time_ms,exec_time_s,waits_s,replan_count,success,opt_rate_pct
+narrow,5,0,HeldKarp,0,35.0,2.91,,,,1,100.0
+narrow,5,0,NN2opt,0,35.0,1.93,,,,1,100.0
+narrow,5,0,GA,0,35.0,52.6,,,,1,100.0
+narrow,5,1,HeldKarp,0,55.0,3.07,,,,1,63.63636363636363
+narrow,5,1,NN2opt,0,55.0,2.54,,,,1,63.63636363636363
+narrow,5,1,GA,0,55.0,41.65,,,,1,63.63636363636363
