@@ -6,29 +6,120 @@ import numpy as np
 
 def plot_bar(summary_csv: str, save_to: str):
     df = pd.read_csv(summary_csv)
-    m = (df.groupby('algo')['opt_rate_pct'].mean().sort_values())
-    plt.figure(figsize=(8,5))
-    m.plot(kind='barh')
-    plt.xlabel('Optimize Rate (%)')
+    # Handle both old and new column names
+    opt_col = 'opt_rate_pct' if 'opt_rate_pct' in df.columns else 'opt_rate'
+    m = (df.groupby('algo')[opt_col].mean().sort_values())
+    
+    plt.figure(figsize=(10, 6))
+    bars = plt.barh(range(len(m)), m.values)
+    plt.yticks(range(len(m)), m.index)
+    plt.xlabel('Optimization Rate')
+    plt.title('Algorithm Optimization Rate Comparison')
+    
+    # Add value labels on bars
+    for i, (bar, value) in enumerate(zip(bars, m.values)):
+        plt.text(bar.get_width() + 0.01, bar.get_y() + bar.get_height()/2, 
+                f'{value:.3f}', va='center', fontsize=9)
+    
     plt.tight_layout()
     os.makedirs(os.path.dirname(save_to), exist_ok=True)
     plt.savefig(save_to, dpi=180)
     plt.close()
 
 def plot_complexity(summary_csv: str, save_to: str):
-    # minimal placeholder scatter: use plan_time_ms percentile as X
+    """Plot planning time vs optimization rate with clear legends."""
     df = pd.read_csv(summary_csv)
-    g = df.groupby('algo').agg(y=('opt_rate_pct','mean'),
+    # Handle both old and new column names
+    opt_col = 'opt_rate_pct' if 'opt_rate_pct' in df.columns else 'opt_rate'
+    
+    g = df.groupby('algo').agg(y=(opt_col,'mean'),
                                x=('plan_time_ms','median'))
-    plt.figure(figsize=(6,5))
-    plt.scatter(g['x'], g['y'])
-    for name,(x,y) in g.iterrows():
-        plt.annotate(name, (x,y))
-    plt.xlabel('Median Plan Time (ms)')
-    plt.ylabel('Opt Rate (%)')
+    
+    plt.figure(figsize=(10, 6))
+    
+    # Create scatter plot with different colors and markers for each algorithm
+    colors = plt.cm.Set1(np.linspace(0, 1, len(g)))
+    markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h']
+    
+    for i, (algo_name, (x, y)) in enumerate(g.iterrows()):
+        color = colors[i]
+        marker = markers[i % len(markers)]
+        
+        plt.scatter(x, y, s=120, color=color, marker=marker, 
+                   label=f'{algo_name}', alpha=0.8, edgecolors='black', linewidth=1)
+        
+        # Add clear value annotations
+        plt.annotate(f'{algo_name}\n({x:.1f}ms, {y:.3f})', (x, y), 
+                    xytext=(8, 8), textcoords='offset points', 
+                    fontsize=9, ha='left',
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor=color, alpha=0.7))
+    
+    plt.xlabel('Median Planning Time (ms)', fontsize=12)
+    plt.ylabel('Optimization Rate', fontsize=12)
+    plt.title('Planning Time vs Optimization Rate by Algorithm', fontsize=14, fontweight='bold')
+    
+    # Add clear legend with algorithm names
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10, title='Algorithms')
+    
+    # Set axis limits and grid
+    plt.xlim(left=0)
+    plt.grid(True, alpha=0.3, linestyle='--')
     plt.tight_layout()
     os.makedirs(os.path.dirname(save_to), exist_ok=True)
-    plt.savefig(save_to, dpi=180)
+    plt.savefig(save_to, dpi=180, bbox_inches='tight')
+    plt.close()
+
+def plot_planning_vs_success_rate(summary_csv: str, save_to: str):
+    """Plot planning time vs success rate with proper legends."""
+    df = pd.read_csv(summary_csv)
+    
+    # Handle both old and new column names for success rate
+    success_col = 'success_rate' if 'success_rate' in df.columns else 'success'
+    
+    g = df.groupby('algo').agg(
+        success_rate=(success_col, 'mean'),
+        planning_time=('plan_time_ms', 'median')
+    )
+    
+    plt.figure(figsize=(10, 6))
+    
+    # Create scatter plot with different colors and markers for each algorithm
+    colors = plt.cm.Set1(np.linspace(0, 1, len(g)))
+    markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h']
+    
+    for i, (algo_name, row) in enumerate(g.iterrows()):
+        color = colors[i]
+        marker = markers[i % len(markers)]
+        
+        plt.scatter(row['planning_time'], row['success_rate'], 
+                   s=120, color=color, marker=marker, 
+                   label=f'{algo_name}', alpha=0.8, edgecolors='black', linewidth=1)
+        
+        # Add value annotations
+        plt.annotate(f'{algo_name}\n({row["planning_time"]:.1f}ms, {row["success_rate"]:.3f})', 
+                    (row['planning_time'], row['success_rate']), 
+                    xytext=(8, 8), textcoords='offset points', 
+                    fontsize=9, ha='left',
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor=color, alpha=0.7))
+    
+    plt.xlabel('Median Planning Time (ms)', fontsize=12)
+    plt.ylabel('Success Rate', fontsize=12)
+    plt.title('Planning Time vs Success Rate by Algorithm', fontsize=14, fontweight='bold')
+    
+    # Add legend with clear algorithm names
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=10)
+    
+    # Set axis limits and grid
+    plt.xlim(left=0)
+    plt.ylim(0, 1.1)
+    plt.grid(True, alpha=0.3, linestyle='--')
+    
+    # Add horizontal line at 100% success rate
+    plt.axhline(y=1.0, color='green', linestyle=':', alpha=0.7, label='Perfect Success')
+    
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(save_to), exist_ok=True)
+    plt.savefig(save_to, dpi=180, bbox_inches='tight')
     plt.close()
 
 
@@ -89,9 +180,43 @@ def plot_radar(df, out_path='figs/radar_metrics.png'):
     plt.close()
 
 
+def plot_full_planning_time(summary_csv: str, save_to: str):
+    """Plot full planning time including replanning with legends."""
+    df = pd.read_csv(summary_csv)
+    
+    # Calculate full planning time (initial + replanning)
+    if 'replan_count' in df.columns and 'plan_time_ms' in df.columns:
+        # Estimate replanning time as replan_count * avg_plan_time_per_replan
+        df['full_plan_time_ms'] = df['plan_time_ms'] + (df['replan_count'] * df['plan_time_ms'] * 0.5)
+    else:
+        df['full_plan_time_ms'] = df['plan_time_ms']
+    
+    g = df.groupby('algo').agg(
+        full_time=('full_plan_time_ms', 'median'),
+        opt_rate=('opt_rate', 'mean')
+    )
+    
+    plt.figure(figsize=(10, 6))
+    
+    # Create scatter plot with different colors for each algorithm
+    colors = plt.cm.Set3(np.linspace(0, 1, len(g)))
+    for i, (name, (x, y)) in enumerate(g.iterrows()):
+        plt.scatter(x, y, s=120, color=colors[i], label=name, alpha=0.7, edgecolors='black')
+        plt.annotate(f'{name}\n({x:.1f}ms, {y:.3f})', (x, y), 
+                    xytext=(5, 5), textcoords='offset points', fontsize=9)
+    
+    plt.xlabel('Full Planning Time (ms) - Including Replanning')
+    plt.ylabel('Optimization Rate')
+    plt.title('Full Planning Time vs Optimization Rate')
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(save_to), exist_ok=True)
+    plt.savefig(save_to, dpi=180, bbox_inches='tight')
+    plt.close()
+
 def plot_scatter(planner_stats, df, out_path='figs/scatter_planning_vs_opt.png'):
     """Plots planning time vs. optimization rate."""
-    import numpy as np
     planning_times = list(planner_stats.get('planning_times', {}).values())
     x = np.mean(planning_times) if planning_times else 0.0
     opt_rate = 100.0 * df['success'].sum() / max(1, len(df))
@@ -115,9 +240,19 @@ def main():
     ap.add_argument("--summary", default="results/summary/summary.csv")
     ap.add_argument("--outdir", default="figs")
     args = ap.parse_args()
-    plot_bar(args.summary, os.path.join(args.outdir, "bar.png"))
-    plot_complexity(args.summary, os.path.join(args.outdir, "complexity.png"))
+    
+    # Generate the required plots according to feedback
+    plot_bar(args.summary, os.path.join(args.outdir, "optimization_rate.png"))
+    plot_complexity(args.summary, os.path.join(args.outdir, "planning_time_vs_opt.png"))
+    plot_planning_vs_success_rate(args.summary, os.path.join(args.outdir, "planning_time_vs_success_rate.png"))
+    plot_full_planning_time(args.summary, os.path.join(args.outdir, "full_planning_time_vs_opt.png"))
+    
     print("Wrote figures to", args.outdir)
+    print("Generated plots:")
+    print("- optimization_rate.png: Optimization rate comparison with values")
+    print("- planning_time_vs_opt.png: Planning time vs optimization rate with legends")
+    print("- planning_time_vs_success_rate.png: Planning time vs success rate with proper legends")
+    print("- full_planning_time_vs_opt.png: Full planning time including replanning")
 
 if __name__ == "__main__":
     main()
