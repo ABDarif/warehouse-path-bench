@@ -37,11 +37,61 @@ def make_map(map_type: str, w=20, h=20, seed=0) -> Grid:
         pass
     return g
 
+def _find_connected_component(g: Grid, start: Pos) -> set:
+    """Find all cells reachable from start using BFS"""
+    from collections import deque
+    component = set()
+    queue = deque([start])
+    component.add(start)
+    
+    while queue:
+        current = queue.popleft()
+        for neighbor in g.neighbors(current):
+            if neighbor not in component:
+                component.add(neighbor)
+                queue.append(neighbor)
+    
+    return component
+
 def sample_depot_and_picks(g: Grid, K: int, seed=0) -> Tuple[Pos, List[Pos]]:
     rng = random.Random(seed)
     free = g.free_cells()
-    depot = (0,0)
-    if depot not in free:
-        depot = free[0]
-    picks = rng.sample([p for p in free if p != depot], K)
+    
+    # Find the largest connected component to ensure all waypoints are reachable
+    visited = set()
+    largest_component = set()
+    
+    for cell in free:
+        if cell not in visited:
+            component = _find_connected_component(g, cell)
+            visited.update(component)
+            if len(component) > len(largest_component):
+                largest_component = component
+    
+    # If no large component found, use all free cells
+    if len(largest_component) < K + 1:
+        largest_component = free
+    
+    # Sample depot from center area of the component
+    if largest_component:
+        center_x, center_y = g.width // 2, g.height // 2
+        candidates = [(abs(p[0] - center_x) + abs(p[1] - center_y), p) 
+                      for p in largest_component 
+                      if len(list(g.neighbors(p))) >= 2]
+        if candidates:
+            candidates.sort()
+            depot = candidates[0][1]
+        else:
+            depot = list(largest_component)[0]
+    else:
+        depot = free[0] if free else (0,0)
+    
+    # Sample picks from the same component
+    available_picks = [p for p in largest_component if p != depot]
+    if len(available_picks) < K:
+        # Not enough picks in component, use what we have
+        picks = available_picks
+    else:
+        picks = rng.sample(available_picks, K)
+    
     return depot, picks

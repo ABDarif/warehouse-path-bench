@@ -34,6 +34,8 @@ def plan_sequence(name: str, dist_fn, n, start, seed=0):
         return order, L
     if name == "GA":
         return ga_tsp(dist_fn, n, start, seed=seed, pop=48, gens=150)
+    if name == "HybridNN2opt":
+        return hybrid_nn_2opt(dist_fn, n, start)
     raise ValueError(f"Unknown algo {name}")
 
 def run_once(map_type: str, K: int, seed: int, algo_name: str, out_writer):
@@ -46,11 +48,34 @@ def run_once(map_type: str, K: int, seed: int, algo_name: str, out_writer):
     order, L = plan_sequence(algo_name, dist, len(waypoints), start=0, seed=seed)
     plan_ms = (time.perf_counter() - t0) * 1000
 
+    # Calculate additional metrics for hybrid algorithms
+    initial_quality = None
+    improvement_pct = None
+    is_hybrid = 1 if algo_name == "HybridNN2opt" else 0
+    
+    # For hybrid, calculate improvement metrics
+    if algo_name == "HybridNN2opt":
+        # Get initial NN solution quality (before 2-opt)
+        from algos.tsp_nn_2opt import nearest_neighbor, tour_length
+        nn_tour = nearest_neighbor(dist, len(waypoints), start=0)
+        initial_quality = tour_length(nn_tour, dist)
+        if initial_quality > 0:
+            improvement_pct = ((initial_quality - L) / initial_quality) * 100.0
+    elif algo_name == "NN2opt":
+        # For comparison, also get initial NN quality
+        from algos.tsp_nn_2opt import nearest_neighbor, tour_length
+        nn_tour = nearest_neighbor(dist, len(waypoints), start=0)
+        initial_quality = tour_length(nn_tour, dist)
+        if initial_quality > 0:
+            improvement_pct = ((initial_quality - L) / initial_quality) * 100.0
+
     # convert sequence into leg endpoints (cells)
     # here we just sum distances; SimPy exec is separate
     out_writer.writerow({
         "map_type": map_type, "K": K, "seed": seed, "algo": algo_name,
-        "is_hybrid": 0, "tour_len": round(L,3), "plan_time_ms": round(plan_ms,2),
+        "is_hybrid": is_hybrid, "tour_len": round(L,3), "plan_time_ms": round(plan_ms,2),
+        "initial_quality": round(initial_quality, 3) if initial_quality else "",
+        "improvement_pct": round(improvement_pct, 2) if improvement_pct else "",
         "exec_time_s": "", "waits_s": "", "replan_count": "", "success": 1
     })
 
@@ -67,6 +92,7 @@ def main():
     out_path = os.path.join(args.out, "runs.csv")
     with open(out_path, "w", newline="") as f:
         fieldnames = ["map_type","K","seed","algo","is_hybrid","tour_len","plan_time_ms",
+                      "initial_quality","improvement_pct",
                       "exec_time_s","waits_s","replan_count","success"]
         w = csv.DictWriter(f, fieldnames=fieldnames)
         w.writeheader()
@@ -76,6 +102,14 @@ def main():
                     for algo in args.algos.split(","):
                         run_once(map_type, K, seed, algo, w)
     print(f"Wrote {out_path}")
+    
+    # Generate formatted output
+    try:
+        from generate_formatted_results import generate_formatted_output
+        formatted_path = os.path.join(os.path.dirname(args.out), "formatted_results.txt")
+        generate_formatted_output(out_path, formatted_path)
+    except ImportError:
+        pass  # Optional feature
 
 if __name__ == "__main__":
     main()

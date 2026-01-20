@@ -2,7 +2,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Tuple, Iterable, Dict, Set
-import numpy as np
 
 Pos = Tuple[int, int]
 
