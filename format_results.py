@@ -345,10 +345,25 @@ def format_results(csv_file: str = "results/raw/runs.csv"):
     print("=" * 100)
 
 
+def format_multi_depot_results(csv_file: str = "results/raw/multi_depot_runs.csv"):
+    """Format multi-depot comparison results (imported from generate_multi_depot_results)"""
+    try:
+        from generate_multi_depot_results import generate_comparison
+        generate_comparison(csv_file)
+    except ImportError:
+        print("⚠️  Multi-depot formatter not available")
+
+
 def main():
     """Main entry point"""
+    import sys
     csv_file = sys.argv[1] if len(sys.argv) > 1 else "results/raw/runs.csv"
-    format_results(csv_file)
+    
+    # Auto-detect if it's a multi-depot results file
+    if "multi_depot" in csv_file:
+        format_multi_depot_results(csv_file)
+    else:
+        format_results(csv_file)
 
 
 if __name__ == "__main__":
