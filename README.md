@@ -123,10 +123,10 @@ cat results/formatted_results.txt
 Compare single-depot vs multi-depot configurations:
 
 ```bash
-# Run multi-depot comparison
+# Run multi-depot comparison (default: 10 seeds for statistical significance)
 python3 -m exp.run_multi_depot \
     --K 10 15 \
-    --seeds 5 \
+    --seeds 10 \
     --num-depots 3 \
     --map-types narrow wide cross \
     --algos HybridNN2opt,NN2opt,HeldKarp,GA
@@ -137,7 +137,7 @@ cat results/multi_depot_comparison.txt
 
 **Key Parameters:**
 - `--K`: Number of packages to pick (default: [10, 15])
-- `--seeds`: Number of random seeds to test (default: 3)
+- `--seeds`: Number of random seeds to test (default: 10, increased for statistical significance)
 - `--num-depots`: Number of docking stations/bots (default: 3)
 - `--map-types`: Warehouse layouts: narrow, wide, cross
 - `--algos`: Algorithms to compare (comma-separated)
@@ -223,17 +223,21 @@ Each algorithm solves a TSP problem:
 
 ### 4. Multi-Depot Execution
 
-- Packages assigned to nearest depot using A* distances
-- Each bot plans its own TSP tour for assigned packages
-- Bots execute in parallel (makespan = max(bot_times))
-- Results compare single vs multi-depot performance
+- **Package Assignment**: Packages are assigned to the nearest depot using A* pathfinding distances
+- **Problem Decomposition**: The multi-depot problem is decomposed into multiple independent single-depot TSP sub-problems (one per depot)
+- **Independent Solving**: Each TSP algorithm (including Held-Karp) is applied independently to each depot's sub-problem
+  - For Held-Karp: Although it's a single-tour algorithm, it solves each depot's TSP instance optimally
+  - The overall solution is not globally optimal since package assignment is heuristic (nearest depot)
+- **Parallel Execution**: Bots execute their tours in parallel (makespan = max(bot_times))
+- **Results Comparison**: Single vs multi-depot performance is compared
 
 ## 📈 Performance Insights
 
 ### Algorithm Characteristics
 
 1. **HeldKarp**: 
-   - Optimal solutions (guaranteed best)
+   - Optimal solutions (guaranteed best) for single-depot TSP
+   - **Multi-Depot Adaptation**: In multi-depot scenarios, Held-Karp is applied independently to each depot's TSP sub-problem after packages are assigned to nearest depots. Each sub-problem is solved optimally, but the overall solution is not globally optimal due to heuristic package assignment.
    - Slower for large K (>15)
    - Best for small problems or when optimality is critical
 

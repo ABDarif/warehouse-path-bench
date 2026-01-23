@@ -35,7 +35,13 @@ def pairwise_distance_builder(grid: Grid, waypoints: List[Tuple[int, int]]):
 
 
 def plan_sequence(name: str, dist_fn, n, start, seed=0):
-    """Plan sequence using specified algorithm"""
+    """
+    Plan sequence using specified algorithm
+    
+    Note: This function is called independently for each depot in multi-depot scenarios.
+    For Held-Karp (single-tour algorithm), it solves each depot's TSP sub-problem optimally.
+    See run_multi_depot() docstring for details on the multi-depot adaptation strategy.
+    """
     if name == "NN2opt":
         return nn_2opt(dist_fn, n, start)
     if name == "HeldKarp":
@@ -75,6 +81,22 @@ def run_multi_depot(grid: Grid, depots: List[Pos], packages: List[Pos],
                     algo_name: str, seed: int, parallel=True):
     """
     Run multi-depot scenario with multiple bots
+    
+    Multi-Depot Adaptation Strategy:
+    --------------------------------
+    This function adapts single-tour TSP algorithms (like Held-Karp) for multi-depot scenarios
+    using a "divide-and-conquer" approach:
+    
+    1. Package Assignment: Packages are assigned to the nearest depot using A* pathfinding
+    2. Problem Decomposition: The multi-depot problem is decomposed into multiple independent
+       single-depot TSP sub-problems (one per depot)
+    3. Independent Solving: Each TSP algorithm (including Held-Karp) is applied independently
+       to each depot's sub-problem (depot + assigned packages)
+    4. Parallel Execution: Bots execute their tours in parallel, with makespan = max(bot_times)
+    
+    Note: Held-Karp is a single-tour TSP algorithm. In this adaptation, it solves each
+    depot's TSP instance optimally, but the overall solution is not globally optimal since
+    package assignment is done heuristically (nearest depot) rather than optimally.
     
     Args:
         parallel: If True, bots work in parallel (makespan = max bot time)
@@ -197,7 +219,7 @@ def main():
     ap = argparse.ArgumentParser(description="Multi-depot, multi-bot warehouse experiment")
     ap.add_argument("--map-types", nargs="+", default=["narrow", "wide", "cross"])
     ap.add_argument("--K", nargs="+", type=int, default=[10, 15])
-    ap.add_argument("--seeds", type=int, default=3)
+    ap.add_argument("--seeds", type=int, default=10, help="Number of random seeds (runs) - increased for statistical significance")
     ap.add_argument("--algos", default="HybridNN2opt,NN2opt,HeldKarp,GA")
     ap.add_argument("--num-depots", type=int, default=3, help="Number of depots/bots")
     ap.add_argument("--out", default="results/raw")
