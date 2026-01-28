@@ -5,6 +5,10 @@ import random
 
 def ox_crossover(p1: List[int], p2: List[int]) -> List[int]:
     n = len(p1)
+    # Need at least 4 elements to sample 2 from range(1, n-1)
+    if n < 4:
+        # For small tours, just return one of the parents
+        return p1[:]
     a,b = sorted(random.sample(range(1,n-1), 2))
     child = [None]*n
     child[a:b] = p1[a:b]
@@ -17,6 +21,9 @@ def ox_crossover(p1: List[int], p2: List[int]) -> List[int]:
 
 def mutate_swap(p: List[int], pm: float) -> None:
     if random.random() < pm:
+        # Need at least 4 elements to swap two from middle
+        if len(p) < 4:
+            return  # Can't mutate small tours
         i,j = random.sample(range(1, len(p)-1), 2)
         p[i],p[j] = p[j],p[i]
 

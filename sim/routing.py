@@ -11,9 +11,15 @@ def octile(a: Pos, b: Pos) -> float:
     return (dx + dy) + (1.4142 - 2) * min(dx, dy)
 
 def reconstruct_path(came_from: Dict[Pos, Pos], start: Pos, goal: Pos) -> List[Pos]:
+    if goal == start:
+        return [start]
+    if goal not in came_from and goal != start:
+        return []  # Path not found
     cur = goal
     path = [cur]
     while cur != start:
+        if cur not in came_from:
+            return []  # Path incomplete
         cur = came_from[cur]
         path.append(cur)
     path.reverse()
