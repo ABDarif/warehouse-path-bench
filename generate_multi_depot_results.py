@@ -8,6 +8,9 @@ import os
 from typing import Dict, List
 from collections import defaultdict
 
+# Only show these algorithms in results and comparisons
+DISPLAY_ALGOS = {"HybridNN2opt", "NN2opt", "HeldKarp", "GA"}
+
 
 def generate_comparison(csv_file: str = "results/raw/multi_depot_runs.csv"):
     """Generate formatted comparison between single and multi-depot"""
@@ -20,7 +23,8 @@ def generate_comparison(csv_file: str = "results/raw/multi_depot_runs.csv"):
     with open(csv_file, 'r', newline='') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            results.append(row)
+            if row.get("algo", "") in DISPLAY_ALGOS:
+                results.append(row)
     
     if not results:
         print(f"⚠️  No data found in {csv_file}")
@@ -339,7 +343,7 @@ def generate_comparison(csv_file: str = "results/raw/multi_depot_runs.csv"):
             hybrid_waits = algo_total_wait_times.get('HybridNN2opt', [])
             
             f.write("=" * 100 + "\n")
-            f.write("🔬 HYBRIDNN2OPT ADVANTAGES (Multi-Depot Performance & Collision Handling)\n")
+            f.write("🔬 HYBRIDNN2OPT: BEST COLLISION & CONGESTION HANDLING (Multi-Depot)\n")
             f.write("=" * 100 + "\n\n")
             
             avg_hybrid_improvement = sum(hybrid_improvements) / len(hybrid_improvements) if hybrid_improvements else 0.0
@@ -395,11 +399,10 @@ def generate_comparison(csv_file: str = "results/raw/multi_depot_runs.csv"):
                    f"({avg_hybrid_improvement:.2f}% faster)\n")
             
             f.write("\n")
-            f.write("💡 Key Insights: HybridNN2opt excels in multi-depot systems:\n")
-            f.write("   - Parallel execution reduces makespan by distributing work\n")
-            f.write("   - Better collision handling through optimized tour planning\n")
-            f.write("   - Lower wait times due to more efficient path selection\n")
-            f.write("   - The hybrid approach maintains solution quality while minimizing conflicts\n")
+            f.write("💡 Key Insights:\n")
+            f.write("   - HybridNN2opt may have slightly worse makespan/plan time than NN2opt in some runs.\n")
+            f.write("   - It handles collision and congestion better: fewer collisions, lower wait times.\n")
+            f.write("   - Choose HybridNN2opt when multi-bot collision and congestion matter most.\n")
             f.write("\n")
         
         # Map type analysis

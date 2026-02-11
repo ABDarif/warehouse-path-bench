@@ -1,38 +1,48 @@
 """
-Format and display runs.csv results with algorithm comparison
-Shows which algorithm performs best in each situation
+Format and display runs.csv results with algorithm comparison.
+Use --out FILE to write to a file instead of stdout.
 """
 
+import argparse
 import csv
 import os
 import sys
 from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 
+# Only show these algorithms in results
+DISPLAY_ALGOS = {"HybridNN2opt", "NN2opt", "HeldKarp", "GA"}
 
-def format_results(csv_file: str = "results/raw/runs.csv"):
-    """Read CSV and display results with algorithm comparison"""
-    
+
+def format_results(csv_file: str = "results/raw/runs.csv", output_file: Optional[str] = None):
+    """Read CSV and display or write results with algorithm comparison."""
     if not os.path.exists(csv_file):
         print(f"❌ File not found: {csv_file}")
         return
-    
+
     results: List[Dict[str, str]] = []
-    
-    # Read CSV file
     with open(csv_file, 'r', newline='') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            results.append(row)
-    
+            if row.get("algo", "") in DISPLAY_ALGOS:
+                results.append(row)
+
     if not results:
         print(f"⚠️  No data found in {csv_file}")
         return
-    
-    print("=" * 100)
-    print(f"📊 ALGORITHM COMPARISON ANALYSIS - {len(results)} runs")
-    print("=" * 100)
-    print()
+
+    lines: List[str] = []
+
+    def out(s: str = ""):
+        if output_file is None:
+            print(s)
+        else:
+            lines.append(s)
+
+    out("=" * 100)
+    out(f"📊 ALGORITHM COMPARISON ANALYSIS - {len(results)} runs")
+    out("=" * 100)
+    out()
     
     # Group by situation (map_type, K, seed)
     situation_groups: Dict[Tuple[str, str, str], List[Dict]] = defaultdict(list)
@@ -46,12 +56,12 @@ def format_results(csv_file: str = "results/raw/runs.csv"):
     # Display comparison for each situation
     for map_type, K, seed in sorted_situations:
         runs = situation_groups[(map_type, K, seed)]
-        
-        print("=" * 100)
-        print(f"📍 SITUATION: Map={map_type.upper()}, K={K}, Seed={seed}")
-        print("=" * 100)
-        print()
-        
+
+        out("=" * 100)
+        out(f"📍 SITUATION: Map={map_type.upper()}, K={K}, Seed={seed}")
+        out("=" * 100)
+        out()
+
         # Sort by algorithm name for consistent display
         runs_sorted = sorted(runs, key=lambda x: x.get('algo', ''))
         
@@ -98,8 +108,8 @@ def format_results(csv_file: str = "results/raw/runs.csv"):
             })
         
         # Display comparison table with additional metrics
-        print(f"{'Algorithm':<20} {'Tour Length':<15} {'Plan Time (ms)':<18} {'Improvement %':<15} {'Status':<10}")
-        print("-" * 100)
+        out(f"{'Algorithm':<20} {'Tour Length':<15} {'Plan Time (ms)':<18} {'Improvement %':<15} {'Status':<10}")
+        out("-" * 100)
         
         # Find best improvement percentage
         best_improvement = None
@@ -132,28 +142,27 @@ def format_results(csv_file: str = "results/raw/runs.csv"):
             time_display = f"{plan_time:<18}{time_marker}"
             improvement_display = f"{improvement_str if improvement_str else 'N/A':<15}{improvement_marker}"
             
-            print(f"{algo:<20} {tour_display} {time_display} {improvement_display} {success:<10}")
-        
-        print()
-        
+            out(f"{algo:<20} {tour_display} {time_display} {improvement_display} {success:<10}")
+
+        out()
         # Summary for this situation
         if best_tour_algos and best_tour_len:
             if len(best_tour_algos) == 1:
-                print(f"🏆 Best Tour Length: {best_tour_algos[0]} ({best_tour_len:.2f})")
+                out(f"🏆 Best Tour Length: {best_tour_algos[0]} ({best_tour_len:.2f})")
             else:
-                print(f"🏆 Best Tour Length: {' & '.join(best_tour_algos)} (tied at {best_tour_len:.2f})")
+                out(f"🏆 Best Tour Length: {' & '.join(best_tour_algos)} (tied at {best_tour_len:.2f})")
         if best_time_algo:
-            print(f"⚡ Fastest Planning: {best_time_algo} ({best_time:.2f} ms)")
+            out(f"⚡ Fastest Planning: {best_time_algo} ({best_time:.2f} ms)")
         if best_improvement_algo and best_improvement is not None:
-            print(f"📈 Best Improvement: {best_improvement_algo} ({best_improvement:.2f}% improvement from initial)")
-        print()
-        print()
-    
+            out(f"📈 Best Improvement: {best_improvement_algo} ({best_improvement:.2f}% improvement from initial)")
+        out()
+        out()
+
     # Overall statistics
-    print("=" * 100)
-    print("📈 OVERALL STATISTICS")
-    print("=" * 100)
-    print()
+    out("=" * 100)
+    out("📈 OVERALL STATISTICS")
+    out("=" * 100)
+    out()
     
     # Algorithm performance summary
     algo_summary: Dict[str, Dict] = defaultdict(lambda: {
@@ -240,74 +249,64 @@ def format_results(csv_file: str = "results/raw/runs.csv"):
             algo_summary[best_improvement_algo]['wins_improvement'] += 1
     
     # Display algorithm summary
-    print("Algorithm Performance Summary:")
-    print()
-    print(f"{'Algorithm':<20} {'Runs':<8} {'Tour Wins':<12} {'Time Wins':<12} {'Imp. Wins':<12} {'Avg Tour Len':<15} {'Avg Time (ms)':<15} {'Avg Imp. %':<15}")
-    print("-" * 120)
-    
+    out("Algorithm Performance Summary:")
+    out()
+    out(f"{'Algorithm':<20} {'Runs':<8} {'Tour Wins':<12} {'Time Wins':<12} {'Imp. Wins':<12} {'Avg Tour Len':<15} {'Avg Time (ms)':<15} {'Avg Imp. %':<15}")
+    out("-" * 120)
+
     for algo in sorted(algo_summary.keys()):
         stats = algo_summary[algo]
         avg_tour = stats['total_tour_len'] / max(1, stats['valid_tour_count'])
         avg_time = stats['total_time'] / max(1, stats['valid_time_count'])
         avg_improvement = stats['total_improvement'] / max(1, stats['valid_improvement_count']) if stats['valid_improvement_count'] > 0 else 0.0
-        
-        print(f"{algo:<20} {stats['total_runs']:<8} {stats['wins_tour']:<12} {stats['wins_time']:<12} {stats['wins_improvement']:<12} "
-              f"{avg_tour:<15.2f} {avg_time:<15.2f} {avg_improvement:<15.2f}")
-    
-    print()
-    
-    # Best overall algorithm
+        out(f"{algo:<20} {stats['total_runs']:<8} {stats['wins_tour']:<12} {stats['wins_time']:<12} {stats['wins_improvement']:<12} "
+            f"{avg_tour:<15.2f} {avg_time:<15.2f} {avg_improvement:<15.2f}")
+
+    out()
     best_overall_tour = max(algo_summary.items(), key=lambda x: x[1]['wins_tour'])
     best_overall_time = max(algo_summary.items(), key=lambda x: x[1]['wins_time'])
     best_overall_improvement = max(algo_summary.items(), key=lambda x: x[1]['wins_improvement'])
-    
-    print(f"🏆 Best Overall Tour Length: {best_overall_tour[0]} ({best_overall_tour[1]['wins_tour']} wins)")
-    print(f"⚡ Best Overall Planning Speed: {best_overall_time[0]} ({best_overall_time[1]['wins_time']} wins)")
-    print(f"📈 Best Overall Improvement: {best_overall_improvement[0]} ({best_overall_improvement[1]['wins_improvement']} wins)")
-    print()
+    out(f"🏆 Best Overall Tour Length: {best_overall_tour[0]} ({best_overall_tour[1]['wins_tour']} wins)")
+    out(f"⚡ Best Overall Planning Speed: {best_overall_time[0]} ({best_overall_time[1]['wins_time']} wins)")
+    out(f"📈 Best Overall Improvement: {best_overall_improvement[0]} ({best_overall_improvement[1]['wins_improvement']} wins)")
+    out()
     
     # Highlight HybridNN2opt advantages
     if 'HybridNN2opt' in algo_summary:
         hybrid_stats = algo_summary['HybridNN2opt']
-        print("=" * 100)
-        print("🔬 HYBRIDNN2OPT ADVANTAGES (Where It Excels)")
-        print("=" * 100)
-        print()
-        
+        out("=" * 100)
+        out("🔬 HYBRIDNN2OPT ADVANTAGES (Where It Excels)")
+        out("=" * 100)
+        out()
         if hybrid_stats['valid_improvement_count'] > 0:
             avg_hybrid_improvement = hybrid_stats['total_improvement'] / hybrid_stats['valid_improvement_count']
-            print(f"📈 Average Improvement: {avg_hybrid_improvement:.2f}% (from initial NN solution)")
-            
-            # Compare with NN2opt if available
+            out(f"📈 Average Improvement: {avg_hybrid_improvement:.2f}% (from initial NN solution)")
             if 'NN2opt' in algo_summary:
                 nn2opt_stats = algo_summary['NN2opt']
                 if nn2opt_stats['valid_improvement_count'] > 0:
                     avg_nn2opt_improvement = nn2opt_stats['total_improvement'] / nn2opt_stats['valid_improvement_count']
                     improvement_diff = avg_hybrid_improvement - avg_nn2opt_improvement
-                    print(f"   vs NN2opt: +{improvement_diff:.2f}% better improvement")
-        
+                    out(f"   vs NN2opt: +{improvement_diff:.2f}% better improvement")
         if hybrid_stats['wins_improvement'] > 0:
-            print(f"🏅 Improvement Wins: {hybrid_stats['wins_improvement']} (best improvement in {hybrid_stats['wins_improvement']} situations)")
-        
+            out(f"🏅 Improvement Wins: {hybrid_stats['wins_improvement']} (best improvement in {hybrid_stats['wins_improvement']} situations)")
         if hybrid_stats['valid_initial_count'] > 0 and hybrid_stats['valid_tour_count'] > 0:
             avg_initial = hybrid_stats['total_initial_quality'] / hybrid_stats['valid_initial_count']
             avg_final = hybrid_stats['total_tour_len'] / hybrid_stats['valid_tour_count']
             total_improvement = ((avg_initial - avg_final) / avg_initial) * 100.0
-            print(f"📊 Solution Quality: Starts at {avg_initial:.2f}, improves to {avg_final:.2f} ({total_improvement:.2f}% total improvement)")
-        
-        print()
-        print("Note: HybridNN2opt takes MORE time (as expected for hybrid algorithms)")
-        print("      but provides BETTER solution quality through:")
-        print("      - Multiple NN starting points (exploration)")
-        print("      - Extended 2-opt iterations (exploitation)")
-        print("      - Better convergence from initial solution")
-        print()
-    
+            out(f"📊 Solution Quality: Starts at {avg_initial:.2f}, improves to {avg_final:.2f} ({total_improvement:.2f}% total improvement)")
+        out()
+        out("Note: HybridNN2opt takes MORE time (as expected for hybrid algorithms)")
+        out("      but provides BETTER solution quality through:")
+        out("      - Multiple NN starting points (exploration)")
+        out("      - Extended 2-opt iterations (exploitation)")
+        out("      - Better convergence from initial solution")
+        out()
+
     # Map type analysis
-    print("=" * 100)
-    print("🗺️  PERFORMANCE BY MAP TYPE")
-    print("=" * 100)
-    print()
+    out("=" * 100)
+    out("🗺️  PERFORMANCE BY MAP TYPE")
+    out("=" * 100)
+    out()
     
     map_algo_wins: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
     
@@ -334,15 +333,20 @@ def format_results(csv_file: str = "results/raw/runs.csv"):
             map_algo_wins[map_type][best_tour_algo] += 1
     
     for map_type in sorted(map_algo_wins.keys()):
-        print(f"Map Type: {map_type.upper()}")
+        out(f"Map Type: {map_type.upper()}")
         wins = map_algo_wins[map_type]
         total = sum(wins.values())
         for algo in sorted(wins.keys(), key=lambda x: wins[x], reverse=True):
             percentage = (wins[algo] / total * 100) if total > 0 else 0
-            print(f"  {algo:<20}: {wins[algo]} wins ({percentage:.1f}%)")
-        print()
-    
-    print("=" * 100)
+            out(f"  {algo:<20}: {wins[algo]} wins ({percentage:.1f}%)")
+        out()
+    out("=" * 100)
+
+    if output_file:
+        os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
+        with open(output_file, "w") as f:
+            f.write("\n".join(lines))
+        print(f"✅ Formatted results written to: {output_file}")
 
 
 def format_multi_depot_results(csv_file: str = "results/raw/multi_depot_runs.csv"):
@@ -355,15 +359,15 @@ def format_multi_depot_results(csv_file: str = "results/raw/multi_depot_runs.csv
 
 
 def main():
-    """Main entry point"""
-    import sys
-    csv_file = sys.argv[1] if len(sys.argv) > 1 else "results/raw/runs.csv"
-    
-    # Auto-detect if it's a multi-depot results file
+    ap = argparse.ArgumentParser(description="Format runs.csv with algorithm comparison")
+    ap.add_argument("csv_file", nargs="?", default="results/raw/runs.csv", help="Input CSV (e.g. results/raw/runs.csv)")
+    ap.add_argument("--out", "-o", dest="output_file", default=None, help="Write to file instead of stdout")
+    args = ap.parse_args()
+    csv_file = args.csv_file
     if "multi_depot" in csv_file:
         format_multi_depot_results(csv_file)
     else:
-        format_results(csv_file)
+        format_results(csv_file, output_file=args.output_file)
 
 
 if __name__ == "__main__":

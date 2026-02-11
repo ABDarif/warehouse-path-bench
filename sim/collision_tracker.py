@@ -119,28 +119,18 @@ def convert_tour_to_paths(grid: Grid, order: List[int], waypoints: List[Pos]) ->
     Returns:
         List of paths, where each path is a list of positions from one waypoint to the next
     """
-    if not order or not waypoints:
-        return []
-    
     paths = []
     for i in range(len(order)):
         start_idx = order[i]
         end_idx = order[(i + 1) % len(order)]
-        
-        # Validate indices
-        if start_idx >= len(waypoints) or end_idx >= len(waypoints):
-            continue
         
         start_pos = waypoints[start_idx]
         end_pos = waypoints[end_idx]
         
         # Get A* path between waypoints
         path, _, _ = astar(grid, start_pos, end_pos, diag_allowed=True)
-        if path and len(path) > 0:
+        if path:
             paths.append(path)
-        else:
-            # Fallback: direct path if A* fails
-            paths.append([start_pos, end_pos])
     
     return paths
 

@@ -18,10 +18,6 @@ from algos.hybrids import hybrid_nn_2opt
 from algos.tsp_nn_2opt import nn_2opt
 from algos.tsp_exact import held_karp
 from algos.tsp_ga import ga_tsp
-from algos.tsp_astar import astar_tsp
-from algos.tsp_aco import aco_tsp
-from algos.tsp_alo import alo_tsp
-from sim.weighted_distance import build_weighted_distance_for_hybrid
 
 
 def pairwise_distance_builder(grid: Grid, waypoints: List[Tuple[int, int]]):
@@ -56,24 +52,13 @@ def plan_sequence(name: str, dist_fn, n, start, seed=0):
         return ga_tsp(dist_fn, n, start, seed=seed, pop=48, gens=150)
     if name == "HybridNN2opt":
         return hybrid_nn_2opt(dist_fn, n, start)
-    if name == "AStar":
-        return astar_tsp(dist_fn, n, start)
-    if name == "ACO":
-        return aco_tsp(dist_fn, n, start, seed=seed)
-    if name == "ALO":
-        return alo_tsp(dist_fn, n, start, seed=seed)
     raise ValueError(f"Unknown algo {name}")
 
 
 def run_single_depot(grid: Grid, depot: Pos, packages: List[Pos], algo_name: str, seed: int):
     """Run single depot scenario (baseline)"""
     waypoints = [depot] + packages
-    
-    # Use weighted distance for HybridNN2opt, regular distance for others
-    if algo_name == "HybridNN2opt":
-        dist = build_weighted_distance_for_hybrid(grid, waypoints, [depot])
-    else:
-        dist = pairwise_distance_builder(grid, waypoints)
+    dist = pairwise_distance_builder(grid, waypoints)
     
     t0 = time.perf_counter()
     order, tour_len = plan_sequence(algo_name, dist, len(waypoints), start=0, seed=seed)
@@ -146,13 +131,7 @@ def run_multi_depot(grid: Grid, depots: List[Pos], packages: List[Pos],
         # Get package positions
         pkg_positions = [packages[i] for i in assigned_packages]
         waypoints = [depot_pos] + pkg_positions
-        
-        # Use weighted distance for HybridNN2opt, regular distance for others
-        if algo_name == "HybridNN2opt":
-            # Use weighted distance function with congestion awareness
-            dist = build_weighted_distance_for_hybrid(grid, waypoints, depots)
-        else:
-            dist = pairwise_distance_builder(grid, waypoints)
+        dist = pairwise_distance_builder(grid, waypoints)
         
         # Plan sequence for this bot
         t0 = time.perf_counter()

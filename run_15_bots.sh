@@ -4,7 +4,7 @@
 # If you want Held-Karp, use smaller K values (--K 10 15 20)
 
 python3 -m exp.run_multi_depot \
-    --num-depots 3 \
+    --num-depots 15 \
     --K 30 45 60 \
     --seeds 10 \
     --map-types narrow wide cross \

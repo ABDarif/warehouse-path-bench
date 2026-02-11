@@ -1,311 +1,278 @@
 # Warehouse Path Benchmark
 
-A comprehensive benchmarking system for comparing Traveling Salesman Problem (TSP) algorithms in warehouse order picking scenarios. This project evaluates multiple TSP algorithms (Held-Karp, Nearest Neighbor + 2-opt, Genetic Algorithm, and HybridNN2opt) on various warehouse layouts, and includes support for both single-depot and multi-depot, multi-bot configurations.
+A comprehensive benchmarking system for comparing Traveling Salesman Problem (TSP) algorithms in warehouse order picking scenarios. This project evaluates multiple TSP algorithms (Held-Karp, Nearest Neighbor + 2-opt, Genetic Algorithm, and HybridNN2opt) on various warehouse layouts, with support for single-depot and multi-depot, multi-bot configurations.
+
+---
+
+## Table of Contents
+
+1. [Project Overview](#-project-overview)
+2. [Quick Start](#-quick-start)
+3. [Project Structure](#-project-structure)
+4. [Running Experiments](#-running-experiments)
+5. [Results & Tables](#-results--tables)
+6. [Visualization](#-visualization)
+7. [Collision & Congestion](#-collision--congestion)
+8. [NN2opt vs HybridNN2opt](#-nn2opt-vs-hybridnn2opt)
+9. [Troubleshooting](#-troubleshooting)
+10. [Requirements](#-requirements)
+
+---
 
 ## 🎯 Project Overview
 
-This project achieves the following:
+### Goals
 
-1. **Algorithm Comparison**: Benchmarks multiple TSP algorithms on warehouse pathfinding problems
-2. **Multi-Depot Support**: Compares single-depot vs multi-depot configurations with parallel bot execution
-3. **Performance Analysis**: Provides detailed statistics and formatted comparisons showing which algorithms perform best in different situations
-4. **Warehouse Simulation**: Simulates realistic warehouse layouts (narrow aisles, wide aisles, cross patterns) with obstacles and pathfinding
-
-## ✨ Key Features
+- **Algorithm comparison**: Benchmarks multiple TSP algorithms on warehouse pathfinding problems.
+- **Multi-depot support**: Compares single-depot vs multi-depot configurations with parallel bot execution.
+- **Performance analysis**: Detailed statistics and formatted comparisons (best algorithm per situation).
+- **Warehouse simulation**: Realistic layouts (narrow/wide/cross aisles) with obstacles and pathfinding.
 
 ### Core Features
-- **Multiple TSP Algorithms**: 
-  - `HeldKarp`: Exact algorithm (optimal solutions, slower)
-  - `NN2opt`: Nearest Neighbor + 2-opt heuristic (fast, good quality)
-  - `GA`: Genetic Algorithm (metaheuristic, balances speed/quality)
-  - `HybridNN2opt`: Hybrid approach combining multiple strategies (best quality)
 
-- **Warehouse Layouts**:
-  - `narrow`: Narrow aisles with cross passages
-  - `wide`: Wide aisles with more open space
-  - `cross`: Cross-pattern layout with main crossings
-
-- **Single-Depot Experiments**: Traditional single-bot, single-depot warehouse picking
-- **Multi-Depot Experiments**: Multiple docking stations with parallel bots (55-60% makespan improvement)
+- **TSP algorithms**: `HeldKarp` (exact), `NN2opt` (fast heuristic), `GA` (metaheuristic), `HybridNN2opt` (best quality).
+- **Layouts**: `narrow`, `wide`, `cross`.
+- **Single-depot**: Traditional single-bot and multi-bot from one depot.
+- **Multi-depot**: Multiple depots with parallel bots (typically 55–60% makespan improvement).
 
 ### Analysis Features
-- Algorithm-by-algorithm comparison
-- Situation-based performance analysis (by map type, package count, seed)
-- Overall statistics and winner identification
-- HybridNN2opt advantages highlighting
-- Map-type specific performance breakdown
 
-## 📁 Project Structure
+- Per-situation and overall comparison, HybridNN2opt highlights, map-type breakdown, collision and congestion metrics.
 
-```
-warehouse-path-bench/
-├── algos/              # TSP algorithm implementations
-│   ├── tsp_exact.py    # Held-Karp exact algorithm
-│   ├── tsp_nn_2opt.py  # Nearest Neighbor + 2-opt
-│   ├── tsp_ga.py       # Genetic Algorithm
-│   └── hybrids.py      # HybridNN2opt algorithm
-│
-├── sim/                # Simulation infrastructure
-│   ├── grid.py         # Warehouse grid with obstacles
-│   ├── routing.py      # A* and Dijkstra pathfinding
-│   ├── distance_service.py  # Distance caching
-│   ├── simpy_exec.py   # SimPy execution simulation
-│   └── greedy_nav.py   # Greedy navigation (alternative approach)
-│
-├── exp/                # Experiment runners
-│   ├── scenarios.py    # Map generation and waypoint sampling
-│   ├── multi_depot_scenarios.py  # Multi-depot sampling
-│   ├── run_matrix.py   # Single-depot experiment runner
-│   ├── run_multi_depot.py  # Multi-depot experiment runner
-│   ├── run_greedy_sim.py  # Greedy navigation runner
-│   ├── eval.py         # Result evaluation
-│   └── run_module1.py  # Module 1 benchmark
-│
-├── utils/              # Utility scripts
-│   └── view_results.py # View CSV or formatted text results
-│
-├── viz/                # Visualization
-│   └── plots.py        # Plotting utilities
-│
-├── format_results.py   # Format and display results (terminal output)
-├── generate_formatted_results.py  # Generate formatted text file
-├── generate_multi_depot_results.py  # Generate multi-depot comparison
-│
-└── results/            # Output directory (created at runtime)
-    ├── raw/            # Raw CSV results
-    ├── formatted_results.txt  # Formatted single-depot results
-    └── multi_depot_comparison.txt  # Formatted multi-depot comparison
-```
+---
 
 ## 🚀 Quick Start
 
 ### Installation
 
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Or minimal dependencies for basic functionality
-pip install -r requirements-minimal.txt
+# Or minimal: pip install -r requirements-minimal.txt
 ```
 
-### Basic Usage
-
-#### 1. Single-Depot Experiments
-
-Run experiments comparing algorithms on single-depot scenarios:
+### Quick test (single-depot)
 
 ```bash
-# Run with default settings (all algorithms, all map types)
-python3 -m exp.run_matrix
-
-# Custom configuration
-python3 -m exp.run_matrix \
-    --algos HybridNN2opt,NN2opt,HeldKarp,GA \
-    --K 10 15 \
-    --map-types narrow wide cross \
-    --seeds 5 \
-    --out results/raw
-```
-
-**View Results:**
-```bash
-# Terminal output (formatted comparison)
+./run_single_depot_test.sh
 python3 format_results.py results/raw/runs.csv
-
-# Or generate formatted text file
-python3 generate_formatted_results.py results/raw/runs.csv results/formatted_results.txt
-cat results/formatted_results.txt
 ```
 
-#### 2. Multi-Depot Experiments
-
-Compare single-depot vs multi-depot configurations:
+### Quick test (multi-depot + collision)
 
 ```bash
-# Run multi-depot comparison (default: 10 seeds for statistical significance)
-python3 -m exp.run_multi_depot \
-    --K 10 15 \
-    --seeds 10 \
-    --num-depots 3 \
-    --map-types narrow wide cross \
-    --algos HybridNN2opt,NN2opt,HeldKarp,GA
+./run_quick_test.sh
+cat results/multi_depot_comparison.txt
+python3 viz/collision_plots.py
+```
 
-# View results
+### Single-depot (full)
+
+```bash
+python3 -m exp.run_matrix --algos HybridNN2opt,NN2opt,HeldKarp,GA --K 10 15 --map-types narrow wide cross --seeds 5 --out results/raw
+python3 format_results.py results/raw/runs.csv
+# Or write to file: python3 format_results.py results/raw/runs.csv --out results/formatted_results.txt
+```
+
+### Multi-depot (full)
+
+```bash
+python3 -m exp.run_multi_depot --K 10 15 --seeds 10 --num-depots 3 --map-types narrow wide cross --algos HybridNN2opt,NN2opt,HeldKarp,GA
 cat results/multi_depot_comparison.txt
 ```
 
-**Key Parameters:**
-- `--K`: Number of packages to pick (default: [10, 15])
-- `--seeds`: Number of random seeds to test (default: 10, increased for statistical significance)
-- `--num-depots`: Number of docking stations/bots (default: 3)
-- `--map-types`: Warehouse layouts: narrow, wide, cross
-- `--algos`: Algorithms to compare (comma-separated)
+### Command reference
 
-#### 3. View Results
+| Runner | Key options |
+|--------|-------------|
+| `exp.run_matrix` | `--algos`, `--K`, `--map-types`, `--seeds`, `--out`, `--num-bots` |
+| `exp.run_multi_depot` | `--algos`, `--K`, `--seeds`, `--num-depots`, `--map-types`, `--out` |
+
+---
+
+## 📁 Project Structure
+
+```
+warehouse-path-bench/
+├── algos/              # TSP implementations (Held-Karp, NN2opt, GA, HybridNN2opt, ACO, ALO, A*)
+├── sim/                # Grid, routing (A*), distance service, SimPy execution, collision tracker
+├── exp/                # Scenarios, run_matrix (single/multi-bot), run_multi_depot, eval
+├── utils/              # view_results
+├── viz/                # Plots: single_depot, congestion, collision, Gantt, etc.
+├── format_results.py   # Format runs.csv (terminal or --out file)
+├── generate_*.py       # Single-depot, multi-depot, congestion, table generators
+├── scripts/
+│   └── generate_tables.py  # Run all table generators at once
+├── run_*.sh            # Convenience scripts (quick test, 15/30 bots, etc.)
+└── results/            # raw/, formatted_results.txt, multi_depot_comparison.txt, tables
+```
+
+---
+
+## 📊 Running Experiments
+
+### Single-depot (1 bot or multi-bot)
 
 ```bash
-# View CSV files
+# Default (all algos, all map types)
+python3 -m exp.run_matrix
+
+# Custom
+python3 -m exp.run_matrix --algos HybridNN2opt,NN2opt,GA --K 10 15 20 --map-types narrow wide cross --seeds 10 --out results/raw
+
+# Multi-bot from one depot (collision tracking)
+python3 -m exp.run_matrix --num-bots 3 --map-types narrow wide --K 15 20 --seeds 5 --algos HybridNN2opt,NN2opt,GA
+```
+
+### Multi-depot
+
+```bash
+python3 -m exp.run_multi_depot --K 10 15 --seeds 10 --num-depots 3 --map-types narrow wide cross --algos HybridNN2opt,NN2opt,HeldKarp,GA
+```
+
+### Viewing results
+
+```bash
+# Terminal
+python3 format_results.py results/raw/runs.csv
+
+# To file
+python3 format_results.py results/raw/runs.csv --out results/formatted_results.txt
+
+# Single-depot comparison file
+python3 generate_single_depot_results.py results/raw/runs.csv
+cat results/single_depot_comparison.txt
+
+# Multi-depot
+cat results/multi_depot_comparison.txt
+
+# Raw CSV
 python3 -m utils.view_results results/raw/runs.csv
-
-# View formatted text files
-python3 -m utils.view_results results/formatted_results.txt
-python3 -m utils.view_results results/multi_depot_comparison.txt
 ```
 
-## 📊 Understanding Results
+---
 
-### Single-Depot Results
+## 📈 Results & Tables
 
-The formatted output shows:
-- **Algorithm Comparison**: Side-by-side comparison for each situation
-- **Best Performers**: 🏆 for best tour length, ⚡ for fastest planning
-- **Overall Statistics**: Average performance, win counts, map-type breakdown
-- **HybridNN2opt Advantages**: Where it excels compared to other algorithms
+### Formatted output (single-depot)
 
-**Example Output:**
-```
-📍 SITUATION: Map=NARROW, K=10, Seed=0
-Algorithm            Tour Length      Plan Time (ms)    Improvement %
---------------------------------------------------------------------
-HybridNN2opt         62.0 🏆          5.99 ⚡           45.60
-NN2opt               72.0             5.90              40.98
-HeldKarp             70.0             12.50             41.63
-```
+- Per situation: map type, K, seed → algorithm comparison (tour length, plan time, improvement %, status).
+- Best performers: 🏆 tour length, ⚡ fastest, 📈 best improvement.
+- Overall statistics, HybridNN2opt advantages, performance by map type.
 
-### Multi-Depot Results
+### Multi-depot output
 
-Shows comparison between single and multi-depot configurations:
+- Single vs multi-depot makespan, improvement %, avg tour per bot.
+- Collision stats (when available): collision count, wait times, collision makespan.
 
-**Key Metrics:**
-- **Makespan**: Total time until all bots finish (main performance metric)
-- **Improvement %**: Percentage reduction in makespan with multi-depot
-- **Avg Tour/Bot**: Average tour length per bot (shows work distribution)
+### Table generators
 
-**Example Output:**
-```
-📍 SITUATION: Map=NARROW, K=10, Seed=0
-Algorithm      Single Makespan    Multi Makespan    Improvement %
-----------------------------------------------------------------
-HybridNN2opt   62.0              24.0 🏆           61.29% ⚡
-NN2opt         72.0              24.0              66.67%
-HeldKarp       70.0              24.0              65.71%
-
-🏆 Best Multi-Depot Makespan: HybridNN2opt & NN2opt & HeldKarp (tied at 24.00)
-⚡ Best Improvement: NN2opt (66.67% faster with multi-depot)
-```
-
-**Typical Results:**
-- **Average Makespan Improvement**: 55-60% faster with multi-depot
-- **HybridNN2opt**: Often achieves best average improvement (45-50%)
-- **Work Distribution**: Packages split across multiple bots, reducing individual tour lengths by ~75%
-
-## 🔬 How It Works
-
-### 1. Warehouse Grid Generation
-
-The system creates warehouse layouts with:
-- Obstacles (shelves, walls)
-- Free cells (aisles, crossings)
-- Connected components (ensures all waypoints are reachable)
-
-### 2. Waypoint Sampling
-
-- **Single-Depot**: Samples one depot and K packages from the largest connected component
-- **Multi-Depot**: Samples multiple depots from different regions, assigns packages to nearest depot
-
-### 3. TSP Solving
-
-Each algorithm solves a TSP problem:
-- **Distance Calculation**: Uses A* pathfinding to compute pairwise distances
-- **Tour Planning**: Applies TSP algorithm to find optimal/approximate tour
-- **Execution**: Simulates bot movement along planned path
-
-### 4. Multi-Depot Execution
-
-- **Package Assignment**: Packages are assigned to the nearest depot using A* pathfinding distances
-- **Problem Decomposition**: The multi-depot problem is decomposed into multiple independent single-depot TSP sub-problems (one per depot)
-- **Independent Solving**: Each TSP algorithm (including Held-Karp) is applied independently to each depot's sub-problem
-  - For Held-Karp: Although it's a single-tour algorithm, it solves each depot's TSP instance optimally
-  - The overall solution is not globally optimal since package assignment is heuristic (nearest depot)
-- **Parallel Execution**: Bots execute their tours in parallel (makespan = max(bot_times))
-- **Results Comparison**: Single vs multi-depot performance is compared
-
-## 📈 Performance Insights
-
-### Algorithm Characteristics
-
-1. **HeldKarp**: 
-   - Optimal solutions (guaranteed best) for single-depot TSP
-   - **Multi-Depot Adaptation**: In multi-depot scenarios, Held-Karp is applied independently to each depot's TSP sub-problem after packages are assigned to nearest depots. Each sub-problem is solved optimally, but the overall solution is not globally optimal due to heuristic package assignment.
-   - Slower for large K (>15)
-   - Best for small problems or when optimality is critical
-
-2. **NN2opt**:
-   - Fast planning time
-   - Good solution quality
-   - Best for time-critical applications
-
-3. **GA**:
-   - Balanced speed/quality
-   - Good for medium-sized problems
-   - Can be tuned with population/generation parameters
-
-4. **HybridNN2opt**:
-   - Best average solution quality
-   - Multiple starting points + extended 2-opt
-   - Best for quality-critical applications
-   - Often achieves best improvement in multi-depot scenarios
-
-### Multi-Depot Benefits
-
-- **55-60% makespan reduction** on average
-- **Parallel execution**: Multiple bots work simultaneously
-- **Work distribution**: Packages split across bots, reducing individual tour lengths
-- **Scalability**: Performance improves with more depots (up to a point)
-
-## 🛠️ Advanced Usage
-
-### Custom Experiments
+From `results/raw/runs.csv` and (for scenario table) `results/raw/multi_depot_runs.csv`:
 
 ```bash
-# Single algorithm, specific map type
-python3 -m exp.run_matrix --algos HybridNN2opt --map-types narrow --K 20
+# All tables (performance, metrics, characteristics, scenario comparison)
+python3 scripts/generate_tables.py
 
-# Multi-depot with more bots
-python3 -m exp.run_multi_depot --num-depots 5 --K 20 --seeds 10
-
-# Greedy navigation (alternative approach)
-python3 -m exp.run_greedy_sim --K 10 --map-types narrow
+# Or individually
+python3 generate_performance_table.py --csv results/raw/runs.csv
+python3 generate_metrics_table.py --csv results/raw/runs.csv
+python3 generate_characteristics_table.py --csv results/raw/runs.csv
+python3 generate_scenario_comparison_table.py --single-csv results/raw/runs.csv --multi-csv results/raw/multi_depot_runs.csv
 ```
 
-### Result Analysis
+Outputs: `results/performance_table.txt`, `results/metrics_table.txt`, `results/characteristics_table.txt`, `results/scenario_comparison_table.txt` (and .csv variants).
+
+### Congestion (single-depot)
+
+- Narrow vs wide: congestion penalty = `(narrow_avg - wide_avg) / wide_avg * 100%`.
+- Run with `--map-types narrow wide cross` for full penalty; narrow-only still gives per-algorithm comparison.
 
 ```bash
-# Generate summary statistics
-python3 -m exp.eval --raw results/raw/runs.csv --out results/summary/summary.csv
-
-# Create visualizations
-python3 -m viz.plots --summary results/summary/summary.csv --outdir figs
+python3 generate_single_depot_congestion.py
+cat results/single_depot_congestion.txt
 ```
+
+---
+
+## 📉 Visualization
+
+- **Single-depot**: `python3 viz/single_depot_plots.py` → tour length, plan time, improvement, comprehensive.
+- **Congestion**: `python3 viz/single_depot_congestion_plots.py` → narrow vs wide, penalty, map types, comprehensive.
+- **Multi-depot / collision**: `python3 viz/collision_plots.py` → collision comparison, wait time, collision vs makespan, comprehensive.
+- **Gantt**: `python3 viz/gantt_timeline.py` for timeline figure.
+
+Other plots in `viz/`: algorithm_performance, complexity_performance, radar, optimality_vs_congestion, collision_narrow_wide, etc.
+
+---
+
+## 🛡️ Collision & Congestion
+
+### Collision tracking
+
+- **Where**: Multi-depot and single-depot multi-bot runs (SimPy: one bot per cell; wait = collision).
+- **Metrics**: Collision count, total/max/avg wait time, collision makespan.
+- **Why HybridNN2opt often wins**: Better tour quality and less path overlap → fewer collisions and lower wait times.
+
+Collision graphs (e.g. from `viz/collision_plots.py`) can show many zeros in small setups (few bots, small K). Use 15+ bots and larger K for meaningful differences (e.g. `./run_15_bots.sh`, `./run_30_bots.sh`).
+
+### Congestion (narrow vs wide)
+
+- **Narrow** = more congested; **wide** = more open.
+- Congestion penalty requires both narrow and wide data: `--map-types narrow wide cross`.
+- HybridNN2opt typically has lower penalty (better congestion handling).
+
+### Multi-bot single-depot
+
+- `--num-bots N` with `exp.run_matrix`: multiple bots from one depot, round-robin package assignment, collision tracking, metrics by map type.
+- CSV fields: `num_bots`, `theoretical_makespan`, `collision_makespan`, `collision_count`, `total_wait_time`, etc.
+
+---
+
+## 🔬 NN2opt vs HybridNN2opt
+
+| Aspect | NN2opt | HybridNN2opt |
+|--------|--------|--------------|
+| NN starts | 1 | 3 (depot, n/2, n/4) |
+| 2-opt max swaps | 1,000 | 3,000 |
+| 2-opt max time | 1.0 s | 3.0 s |
+| Quality | Good | Better (shorter tours) |
+| Improvement % | ~9–10% | ~12–18% |
+| Planning time | ~8 ms | ~10 ms |
+
+**Use NN2opt** when speed is critical; **HybridNN2opt** when quality and consistency matter (recommended for most cases).
+
+---
+
+## 🔧 Troubleshooting
+
+### "Skipping..." messages
+
+Some runs are skipped (e.g. GA with too few waypoints, Held-Karp timeout, insufficient free cells). The rest of the experiment continues; skipped runs are not in statistics.
+
+### Held-Karp timeout
+
+- Held-Karp is O(2^n × n²) with a 30 s limit. For large K (e.g. ≥ 30), use smaller K or omit it: `--algos HybridNN2opt,NN2opt,GA`.
+
+### Recommended configs
+
+- **15 bots**: `--num-depots 15 --K 30 45 60 --seeds 10 --algos HybridNN2opt,NN2opt,GA` (or smaller K if including HeldKarp).
+- **30 bots**: Same, exclude HeldKarp for large K.
+
+### Missing narrow/wide or congestion penalty
+
+- Run with `--map-types narrow wide cross` for full congestion analysis.
+
+### Collision graphs all zeros
+
+- Normal for quick/small runs. Use more bots and larger K (e.g. `./run_15_bots.sh`) for visible collision differences.
+
+---
 
 ## 📝 Requirements
 
-### Core Dependencies
-- `simpy`: Discrete-event simulation
-- `networkx`: Graph algorithms
-- `numpy`: Numerical computations
-- `matplotlib`: Plotting (optional)
-- `pandas`: Data analysis (optional)
-- `tqdm`: Progress bars (optional)
+- **Core**: simpy, networkx, numpy; **optional**: matplotlib, pandas, tqdm. See `requirements.txt`.
 
-See `requirements.txt` for full list.
+---
 
 ## 🤝 Contributing
 
-This project is designed for research and benchmarking. Key areas for extension:
-- Additional TSP algorithms
-- More warehouse layout types
-- Collision avoidance in multi-bot scenarios
-- Real-time replanning
-- Load balancing algorithms for package distribution
+Possible extensions: more TSP algorithms, layout types, collision avoidance, replanning, load balancing.
